@@ -19,6 +19,7 @@ ADMIN_ID = int(ADMIN_ID)
 
 # File to store movie data
 STORAGE_FILE = 'storage.json'
+TEMP_FILE_IDS = {}  # Temporary storage for incoming file IDs
 
 
 def log_to_discord(message):
@@ -45,18 +46,25 @@ def save_movies(movies):
 
 
 def send_message(chat_id, text):
-    """Sends a message to the specified chat ID."""
+    """Sends a text message to a chat."""
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
     requests.post(url, json=payload)
 
 
-def store_movie(file_name, file_link):
-    """Stores a movie name with its corresponding link."""
+def send_file(chat_id, file_id):
+    """Sends a stored Telegram file using its file_id."""
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
+    payload = {'chat_id': chat_id, 'document': file_id}
+    requests.post(url, json=payload)
+
+
+def store_movie(file_name, file_data):
+    """Stores a movie, either as a Telegram file or a link."""
     movies = load_movies()
-    movies[file_name] = {"link": file_link}  # Stores link as a dictionary entry
+    movies[file_name] = file_data  # Can be {'link': 'url'} or {'file_id': 'id'}
     save_movies(movies)
-    log_to_discord(f"Stored movie: {file_name} (Link: {file_link})")
+    log_to_discord(f"Stored movie: {file_name} ({file_data})")
 
 
 def process_update(update):
@@ -67,6 +75,8 @@ def process_update(update):
     chat_id = update['message']['chat']['id']
     user_id = update['message']['from']['id']
     text = update['message'].get('text', '')
+    document = update['message'].get('document')
+    video = update['message'].get('video')
 
     if text == '/start':
         send_message(chat_id, "Welcome to the Movie Bot!")
@@ -82,7 +92,7 @@ def process_update(update):
             send_message(chat_id, "Usage: /add_movie MovieName MovieLink")
         else:
             _, movie_name, link = parts
-            store_movie(movie_name, link)
+            store_movie(movie_name, {"link": link})
             send_message(chat_id, f"Movie '{movie_name}' added.")
 
     elif text.startswith('/delete_movie'):
@@ -101,7 +111,7 @@ def process_update(update):
 
     elif text == '/list_movies':
         movies = load_movies()
-        movie_list = '\n'.join(f"{name}: {data['link']}" for name, data in movies.items()) or "No movies stored."
+        movie_list = '\n'.join(f"{name}: {data.get('link', 'File ID stored')}" for name, data in movies.items()) or "No movies stored."
         send_message(chat_id, f"Stored Movies:\n{movie_list}")
 
     elif text.startswith('/get_movie_link'):
@@ -113,10 +123,31 @@ def process_update(update):
             movies = load_movies()
             movie_data = movies.get(movie_name)
 
-            if movie_data and "link" in movie_data:
-                send_message(chat_id, f"Link for '{movie_name}': {movie_data['link']}")
+            if movie_data:
+                if "link" in movie_data:
+                    send_message(chat_id, f"Link for '{movie_name}': {movie_data['link']}")
+                elif "file_id" in movie_data:
+                    send_file(chat_id, movie_data['file_id'])
+                else:
+                    send_message(chat_id, f"Movie '{movie_name}' not found.")
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
+
+    elif document or video:
+        """Handles forwarded files and stores their file ID"""
+        file_id = document['file_id'] if document else video['file_id']
+        send_message(chat_id, "Send the name you want to assign to this file.")
+        TEMP_FILE_IDS[chat_id] = file_id  # Store temp file ID
+
+    elif update['message'].get('reply_to_message'):
+        """Handles the user's response after sending a file"""
+        original_message = update['message']['reply_to_message']['text']
+        if original_message == "Send the name you want to assign to this file.":
+            file_name = text
+            file_id = TEMP_FILE_IDS.pop(chat_id, None)
+            if file_id:
+                store_movie(file_name, {"file_id": file_id})
+                send_message(chat_id, f"Stored '{file_name}' as a Telegram file.")
 
 
 @app.route('/', methods=['GET'])
