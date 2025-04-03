@@ -85,7 +85,7 @@ def send_message(chat_id, text):
 # Set webhook
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://<your_render_app>.render.com/{BOT_TOKEN}'
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://rypera.onrender.com/{BOT_TOKEN}'
     response = requests.get(url)
     return jsonify(response.json())
 
