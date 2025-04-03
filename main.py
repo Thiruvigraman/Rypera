@@ -1,7 +1,11 @@
-import json
 import os
+import json
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+
+# Flask App
+app = Flask(__name__)
 
 # Load or create storage file
 STORAGE_FILE = "storage.json"
@@ -12,7 +16,7 @@ else:
     movie_data = {}
 
 # Admin user ID (Replace with your Telegram user ID)
-ADMIN_ID = 6778132055  # Change this to your Telegram user ID
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6778132055"))  # Replace with your Telegram user ID
 
 # Function to save data
 def save_data():
@@ -105,7 +109,10 @@ async def delete_movie(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Movie not found.")
 
 # Create bot application
-application = Application.builder().token("YOUR_BOT_TOKEN").build()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Set this in Render
+
+application = Application.builder().token(BOT_TOKEN).build()
 
 # Command Handlers
 application.add_handler(CommandHandler("start", start))
@@ -117,5 +124,21 @@ application.add_handler(CommandHandler("delete", delete_movie))
 # Handle forwarded video files
 application.add_handler(MessageHandler(filters.VIDEO & filters.FORWARDED, handle_forwarded))
 
-# Start bot
-application.run_polling()
+# Flask route for Telegram webhook
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(), application.bot)
+    application.process_update(update)
+    return "OK"
+
+# Start bot with webhook
+async def start_bot():
+    webhook_info = await application.bot.get_webhook_info()
+    if webhook_info.url != WEBHOOK_URL:
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+
+if __name__ == "__main__":
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_bot())
+    app.run(host="0.0.0.0", port=5000)
