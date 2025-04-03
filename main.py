@@ -29,7 +29,7 @@ def index():
     return "Bot is running!"
 
 # Webhook handler
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+@app.route('/', methods=['POST'])
 def webhook():
     update = request.get_json()
     chat_id = update['message']['chat']['id']
