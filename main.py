@@ -21,8 +21,8 @@ def save_movies(movies):
 movies = load_movies()
 
 # 🔹 Your Telegram Bot Token & Admin ID
-TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
-ADMIN_ID = 6778132055  # Replace with your Telegram User ID
+TOKEN = "YOUR_BOT_TOKEN"  # bot token
+ADMIN_ID = 6778132055  # Admin ID
 
 # 🔹 Start Command (Users can fetch movies)
 def start(update: Update, context: CallbackContext):
