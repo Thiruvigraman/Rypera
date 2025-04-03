@@ -113,5 +113,6 @@ application.add_handler(CommandHandler("delete_movie", delete_movie))
 
 # Run Bot
 if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
     print("Bot is running...")
     application.run_polling()
