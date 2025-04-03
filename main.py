@@ -1,131 +1,93 @@
 import os
 import json
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
+from flask import Flask, request, jsonify
 
-# Load environment variables
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "YOUR_TELEGRAM_ID"))
-
-# Initialize Flask
 app = Flask(__name__)
 
+# Load environment variables
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_ID = int(os.getenv('ADMIN_ID'))
 
-@app.route("/")
-def home():
-    return "Bot is running!"
+# File to store movie data
+STORAGE_FILE = 'storage.json'
 
-# Initialize Telegram Bot
-application = Application.builder().token(BOT_TOKEN).build()
-
-MOVIE_STORAGE = "storage.json"
-
+# Load existing movie data
 def load_movies():
-    """Load movie data from storage."""
-    if os.path.exists(MOVIE_STORAGE):
-        with open(MOVIE_STORAGE, "r") as f:
+    if os.path.exists(STORAGE_FILE):
+        with open(STORAGE_FILE, 'r') as f:
             return json.load(f)
     return {}
 
+# Save movie data
 def save_movies(movies):
-    """Save movie data to storage."""
-    with open(MOVIE_STORAGE, "w") as f:
-        json.dump(movies, f, indent=4)
+    with open(STORAGE_FILE, 'w') as f:
+        json.dump(movies, f)
 
-MOVIES = load_movies()
+# Default route
+@app.route('/')
+def index():
+    return "Bot is running!"
 
-# Admin Check
-def is_admin(user_id):
-    return user_id == ADMIN_ID
-
-# /start Command (For everyone)
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Welcome! This bot manages movie links.")
-
-# /add_movie Command (Admin only)
-async def add_movie(update: Update, context: CallbackContext):
-    if not is_admin(update.message.from_user.id):
-        return await update.message.reply_text("You are not authorized.")
-
-    args = context.args
-    if len(args) < 2:
-        return await update.message.reply_text("Usage: /add_movie <movie_name> <link>")
-
-    movie_name = " ".join(args[:-1])
-    link = args[-1]
-
-    MOVIES[movie_name] = link
-    save_movies(MOVIES)
-    await update.message.reply_text(f"✅ Movie '{movie_name}' added!")
-
-# /get_movie Command (Admin only)
-async def get_movie(update: Update, context: CallbackContext):
-    if not is_admin(update.message.from_user.id):
-        return await update.message.reply_text("You are not authorized.")
-
-    args = context.args
-    if not args:
-        return await update.message.reply_text("Usage: /get_movie <movie_name>")
-
-    movie_name = " ".join(args)
-    link = MOVIES.get(movie_name)
-
-    if link:
-        await update.message.reply_text(f"🎬 {movie_name}: {link}")
-    else:
-        await update.message.reply_text("❌ Movie not found.")
-
-# /list_movies Command (Admin only)
-async def list_movies(update: Update, context: CallbackContext):
-    if not is_admin(update.message.from_user.id):
-        return await update.message.reply_text("You are not authorized.")
-
-    if not MOVIES:
-        await update.message.reply_text("No movies stored yet.")
-    else:
-        movie_list = "\n".join([f"🎬 {name}" for name in MOVIES.keys()])
-        await update.message.reply_text(f"📜 Movie List:\n{movie_list}")
-
-# /delete_movie Command (Admin only)
-async def delete_movie(update: Update, context: CallbackContext):
-    if not is_admin(update.message.from_user.id):
-        return await update.message.reply_text("You are not authorized.")
-
-    args = context.args
-    if not args:
-        return await update.message.reply_text("Usage: /delete_movie <movie_name>")
-
-    movie_name = " ".join(args)
-    if movie_name in MOVIES:
-        del MOVIES[movie_name]
-        save_movies(MOVIES)
-        await update.message.reply_text(f"🗑️ Movie '{movie_name}' deleted!")
-    else:
-        await update.message.reply_text("❌ Movie not found.")
-
-# Webhook route for Telegram
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+# Webhook handler
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
-    """Handle Telegram Webhook Updates."""
-    update = Update.de_json(request.get_json(), application.bot)
-    application.update_queue.put(update)
-    return "OK", 200
+    update = request.get_json()
+    chat_id = update['message']['chat']['id']
+    user_id = update['message']['from']['id']
+    command = update['message']['text'].split()
 
-# Set Webhook on Startup
-@app.route("/set_webhook")
+    if command[0] == '/start':
+        send_message(chat_id, "Welcome to the Movie Bot!")
+
+    elif user_id == ADMIN_ID:
+        if command[0] == '/add_movie' and len(command) == 3:
+            movie_name = command[1]
+            link = command[2]
+            movies = load_movies()
+            movies[movie_name] = link
+            save_movies(movies)
+            send_message(chat_id, f"Movie '{movie_name}' added.")
+
+        elif command[0] == '/delete_movie' and len(command) == 2:
+            movie_name = command[1]
+            movies = load_movies()
+            if movie_name in movies:
+                del movies[movie_name]
+                save_movies(movies)
+                send_message(chat_id, f"Movie '{movie_name}' deleted.")
+            else:
+                send_message(chat_id, f"Movie '{movie_name}' not found.")
+
+        elif command[0] == '/list_movies':
+            movies = load_movies()
+            if movies:
+                movie_list = "\n".join(f"{name}: {link}" for name, link in movies.items())
+                send_message(chat_id, f"Stored Movies:\n{movie_list}")
+            else:
+                send_message(chat_id, "No movies stored.")
+
+        elif command[0] == '/get_movie_link' and len(command) == 2:
+            movie_name = command[1]
+            movies = load_movies()
+            if movie_name in movies:
+                send_message(chat_id, f"Link for '{movie_name}': {movies[movie_name]}")
+            else:
+                send_message(chat_id, f"Movie '{movie_name}' not found.")
+
+    return jsonify(success=True)
+
+# Function to send messages to Telegram
+def send_message(chat_id, text):
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+    payload = {'chat_id': chat_id, 'text': text}
+    requests.post(url, json=payload)
+
+# Set webhook
+@app.route('/set_webhook', methods=['GET'])
 def set_webhook():
-    """Set webhook for Telegram Bot."""
-    url = f"https://rypera.onrender.com/{BOT_TOKEN}"  # Replace with your actual Render URL
-    success = application.bot.setWebhook(url)
-    return f"Webhook set: {success}"
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://<your_render_app>.render.com/{BOT_TOKEN}'
+    response = requests.get(url)
+    return jsonify(response.json())
 
-# Handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("add_movie", add_movie))
-application.add_handler(CommandHandler("get_movie", get_movie))
-application.add_handler(CommandHandler("list_movies", list_movies))
-application.add_handler(CommandHandler("delete_movie", delete_movie))
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
