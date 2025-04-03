@@ -111,8 +111,7 @@ def main():
     dp.add_handler(CommandHandler("delete", delete_movie, pass_args=True))
     dp.add_handler(CommandHandler("listmovies", list_movies))  # ✅ Shows all stored movies
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
