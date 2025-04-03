@@ -1,67 +1,119 @@
 import json
-import re
-import threading
-from flask import Flask
-from telegram import Update, Bot
+import os
+from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-TOKEN = "YOUR_BOT_TOKEN"
-PRIVATE_CHANNEL_ID = -1002553617087  
-# private channel ID
-PUBLIC_CHANNEL_ID = --1002660015956  
-# main channel ID
+# 🔹 Load or Create Movie Storage File
+STORAGE_FILE = "storage.json"
+if not os.path.exists(STORAGE_FILE):
+    with open(STORAGE_FILE, "w") as f:
+        json.dump({}, f)
 
-app = Flask(__name__)
-bot = Bot(token=TOKEN)
-
-# Load stored movies
+# 🔹 Load Movie Data from File
 def load_movies():
-    try:
-        with open("storage.json", "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    with open(STORAGE_FILE, "r") as f:
+        return json.load(f)
+
+def save_movies(movies):
+    with open(STORAGE_FILE, "w") as f:
+        json.dump(movies, f, indent=4)
 
 movies = load_movies()
 
-def save_movies():
-    with open("storage.json", "w") as f:
-        json.dump(movies, f)
+# 🔹 Your Telegram Bot Token
+TOKEN = "YOUR_BOT_TOKEN"  # bot token
+ADMIN_ID = 6778132055  # Telegram User ID
 
-# Extract movie name from the forwarded message caption
-def extract_movie_name(text):
-    if text:
-        pattern = r"^(.*?)\s*\|"
-        match = re.search(pattern, text)
-        return match.group(1).strip() if match else text.strip()
-    return None
+# 🔹 Start Command
+def start(update: Update, context: CallbackContext):
+    args = context.args
+    if args:
+        movie_name = " ".join(args).replace("_", " ")
+        if movie_name in movies:
+            update.message.reply_document(document=movies[movie_name])
+            return
+    update.message.reply_text("Welcome! Send me a movie name to get the file.")
 
-# Detect and store forwarded movie uploads
-def detect_movie_upload(update: Update, context: CallbackContext):
-    if update.message.forward_from_chat and update.message.forward_from_chat.id == PRIVATE_CHANNEL_ID:
-        message_id = update.message.message_id
-        movie_name = extract_movie_name(update.message.caption)
+# 🔹 Store Movie File (Admin Only)
+def store_movie(update: Update, context: CallbackContext):
+    if update.message.from_user.id != ADMIN_ID:
+        update.message.reply_text("🚫 You are not allowed to store movies.")
+        return
 
-        if movie_name:
-            movies[movie_name] = message_id
-            save_movies()
-            update.message.reply_text(f"✅ Movie '{movie_name}' stored with ID {message_id}")
-        else:
-            update.message.reply_text("❌ Please add a caption with the movie name before forwarding.")
+    if update.message.document or update.message.video:
+        file = update.message.document or update.message.video
+        file_id = file.file_id
+        file_name = file.file_name or "Unknown File"
 
-# Webhook endpoint for Render
-@app.route('/')
-def home():
-    return "Bot is running!"
+        movies[file_name] = file_id
+        save_movies(movies)
 
-# Run the bot
-def run_bot():
+        update.message.reply_text(f"✅ Movie **{file_name}** stored successfully!")
+    else:
+        update.message.reply_text("❌ Please send a movie file.")
+
+# 🔹 Get Link for a Movie (Admin Only)
+def get_movie_link(update: Update, context: CallbackContext):
+    if update.message.from_user.id != ADMIN_ID:
+        update.message.reply_text("🚫 You are not allowed to use this command.")
+        return
+
+    if len(context.args) == 0:
+        update.message.reply_text("Usage: /getlink <Movie Name>")
+        return
+
+    movie_name = " ".join(context.args)
+    if movie_name in movies:
+        bot_username = context.bot.username
+        movie_link = f"https://t.me/{bot_username}?start={movie_name.replace(' ', '_')}"
+        update.message.reply_text(f"🎬 **Share this link:**\n\n[{movie_name}]({movie_link})", parse_mode="Markdown")
+    else:
+        update.message.reply_text("❌ Movie not found.")
+
+# 🔹 Delete a Movie (Admin Only)
+def delete_movie(update: Update, context: CallbackContext):
+    if update.message.from_user.id != ADMIN_ID:
+        update.message.reply_text("🚫 You are not allowed to delete movies.")
+        return
+
+    if len(context.args) == 0:
+        update.message.reply_text("Usage: /delete <Movie Name>")
+        return
+
+    movie_name = " ".join(context.args)
+    if movie_name in movies:
+        del movies[movie_name]
+        save_movies(movies)
+        update.message.reply_text(f"🗑️ Movie **{movie_name}** deleted successfully!")
+    else:
+        update.message.reply_text("❌ Movie not found.")
+
+# 🔹 List All Movies (Admin Only)
+def list_movies(update: Update, context: CallbackContext):
+    if update.message.from_user.id != ADMIN_ID:
+        update.message.reply_text("🚫 You are not allowed to use this command.")
+        return
+
+    if not movies:
+        update.message.reply_text("📂 No movies stored.")
+        return
+
+    movie_list = "\n".join(movies.keys())
+    update.message.reply_text(f"🎞 **Stored Movies:**\n\n{movie_list}")
+
+# 🔹 Set Up the Bot
+def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
-    dp.add_handler(MessageHandler(Filters.forwarded & (Filters.video | Filters.document), detect_movie_upload))
+
+    dp.add_handler(CommandHandler("start", start, pass_args=True))
+    dp.add_handler(MessageHandler(Filters.document | Filters.video, store_movie))
+    dp.add_handler(CommandHandler("getlink", get_movie_link, pass_args=True))
+    dp.add_handler(CommandHandler("delete", delete_movie, pass_args=True))
+    dp.add_handler(CommandHandler("listmovies", list_movies))  # 👈 New Command
+
     updater.start_polling()
     updater.idle()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=8080)
+    main()
