@@ -103,8 +103,7 @@ def list_movies(update: Update, context: CallbackContext):
 
 # 🔹 Set Up the Bot
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    application = Application.builder().token("YOUR_BOT_TOKEN").build()
 
     dp.add_handler(CommandHandler("start", start, pass_args=True))
     dp.add_handler(MessageHandler(Filters.document | Filters.video, store_movie))
