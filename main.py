@@ -1,4 +1,4 @@
-import os
+ import os
  import json
  import requests
  from flask import Flask, request, jsonify
@@ -31,7 +31,7 @@ def process_update(update): if 'message' not in update: return
 
 chat_id = update['message']['chat']['id']
 user_id = update['message']['from']['id']
-text = update['message'].get('text', '')
+text = update['message'].get('text', '').strip()
 document = update['message'].get('document')
 video = update['message'].get('video')
 
