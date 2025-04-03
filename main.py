@@ -22,11 +22,13 @@ STORAGE_FILE = 'storage.json'
 
 
 def log_to_discord(message):
+    """Logs messages to Discord webhook (if available)."""
     if DISCORD_WEBHOOK:
         requests.post(DISCORD_WEBHOOK, json={"content": message})
 
 
 def load_movies():
+    """Loads stored movies from the JSON file."""
     if os.path.exists(STORAGE_FILE):
         try:
             with open(STORAGE_FILE, 'r') as f:
@@ -37,42 +39,34 @@ def load_movies():
 
 
 def save_movies(movies):
+    """Saves movies to the JSON file."""
     with open(STORAGE_FILE, 'w') as f:
         json.dump(movies, f, indent=4)
 
 
 def send_message(chat_id, text):
+    """Sends a message to the specified chat ID."""
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
     requests.post(url, json=payload)
 
 
-def request_movie_name(chat_id, file_id):
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    payload = {
-        'chat_id': chat_id,
-        'text': 'What name do you want to assign to this file?',
-        'reply_markup': json.dumps({"force_reply": True})
-    }
-    requests.post(url, json=payload)
-
-
-def store_movie(file_name, file_id):
+def store_movie(file_name, file_link):
+    """Stores a movie name with its corresponding link."""
     movies = load_movies()
-    movies[file_name] = file_id
+    movies[file_name] = {"link": file_link}  # Stores link as a dictionary entry
     save_movies(movies)
-    log_to_discord(f"Stored movie: {file_name} ({file_id})")
+    log_to_discord(f"Stored movie: {file_name} (Link: {file_link})")
 
 
 def process_update(update):
+    """Processes incoming Telegram updates."""
     if 'message' not in update:
         return
 
     chat_id = update['message']['chat']['id']
     user_id = update['message']['from']['id']
     text = update['message'].get('text', '')
-    document = update['message'].get('document')
-    video = update['message'].get('video')
 
     if text == '/start':
         send_message(chat_id, "Welcome to the Movie Bot!")
@@ -107,7 +101,7 @@ def process_update(update):
 
     elif text == '/list_movies':
         movies = load_movies()
-        movie_list = '\n'.join(f"{name}: {link}" for name, link in movies.items()) or "No movies stored."
+        movie_list = '\n'.join(f"{name}: {data['link']}" for name, data in movies.items()) or "No movies stored."
         send_message(chat_id, f"Stored Movies:\n{movie_list}")
 
     elif text.startswith('/get_movie_link'):
@@ -117,23 +111,12 @@ def process_update(update):
         else:
             movie_name = parts[1]
             movies = load_movies()
-            link = movies.get(movie_name)
-            if link:
-                send_message(chat_id, f"Link for '{movie_name}': {link}")
+            movie_data = movies.get(movie_name)
+
+            if movie_data and "link" in movie_data:
+                send_message(chat_id, f"Link for '{movie_name}': {movie_data['link']}")
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
-
-    elif document or video:
-        file_id = document['file_id'] if document else video['file_id']
-        request_movie_name(chat_id, file_id)
-        log_to_discord(f"Received file: {file_id} from {user_id}")
-
-    elif update['message'].get('reply_to_message') and \
-            update['message']['reply_to_message']['text'] == 'What name do you want to assign to this file?':
-        file_name = text
-        file_id = update['message']['reply_to_message']['message_id']
-        store_movie(file_name, file_id)
-        send_message(chat_id, f"Stored '{file_name}' with ID {file_id}")
 
 
 @app.route('/', methods=['GET'])
