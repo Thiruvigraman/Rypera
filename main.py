@@ -11,6 +11,10 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "YOUR_TELEGRAM_ID"))
 # Initialize Flask
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return "Bot is running!"
+
 # Initialize Telegram Bot
 application = Application.builder().token(BOT_TOKEN).build()
 
