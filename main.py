@@ -34,11 +34,11 @@ MOVIES = load_movies()
 def is_admin(user_id):
     return user_id == ADMIN_ID
 
-# /start Command
+# /start Command (For everyone)
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("Welcome! This bot manages movie links.")
 
-# /add_movie Command
+# /add_movie Command (Admin only)
 async def add_movie(update: Update, context: CallbackContext):
     if not is_admin(update.message.from_user.id):
         return await update.message.reply_text("You are not authorized.")
@@ -54,6 +54,51 @@ async def add_movie(update: Update, context: CallbackContext):
     save_movies(MOVIES)
     await update.message.reply_text(f"✅ Movie '{movie_name}' added!")
 
+# /get_movie Command (Admin only)
+async def get_movie(update: Update, context: CallbackContext):
+    if not is_admin(update.message.from_user.id):
+        return await update.message.reply_text("You are not authorized.")
+
+    args = context.args
+    if not args:
+        return await update.message.reply_text("Usage: /get_movie <movie_name>")
+
+    movie_name = " ".join(args)
+    link = MOVIES.get(movie_name)
+
+    if link:
+        await update.message.reply_text(f"🎬 {movie_name}: {link}")
+    else:
+        await update.message.reply_text("❌ Movie not found.")
+
+# /list_movies Command (Admin only)
+async def list_movies(update: Update, context: CallbackContext):
+    if not is_admin(update.message.from_user.id):
+        return await update.message.reply_text("You are not authorized.")
+
+    if not MOVIES:
+        await update.message.reply_text("No movies stored yet.")
+    else:
+        movie_list = "\n".join([f"🎬 {name}" for name in MOVIES.keys()])
+        await update.message.reply_text(f"📜 Movie List:\n{movie_list}")
+
+# /delete_movie Command (Admin only)
+async def delete_movie(update: Update, context: CallbackContext):
+    if not is_admin(update.message.from_user.id):
+        return await update.message.reply_text("You are not authorized.")
+
+    args = context.args
+    if not args:
+        return await update.message.reply_text("Usage: /delete_movie <movie_name>")
+
+    movie_name = " ".join(args)
+    if movie_name in MOVIES:
+        del MOVIES[movie_name]
+        save_movies(MOVIES)
+        await update.message.reply_text(f"🗑️ Movie '{movie_name}' deleted!")
+    else:
+        await update.message.reply_text("❌ Movie not found.")
+
 # Webhook route for Telegram
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
@@ -66,13 +111,16 @@ def webhook():
 @app.route("/set_webhook")
 def set_webhook():
     """Set webhook for Telegram Bot."""
-    url = f"https://your-render-url.com/{BOT_TOKEN}"  # Replace with your actual Render URL
+    url = f"https://rypera.onrender.com/{BOT_TOKEN}"  # Replace with your actual Render URL
     success = application.bot.setWebhook(url)
     return f"Webhook set: {success}"
 
 # Handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("add_movie", add_movie))
+application.add_handler(CommandHandler("get_movie", get_movie))
+application.add_handler(CommandHandler("list_movies", list_movies))
+application.add_handler(CommandHandler("delete_movie", delete_movie))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
