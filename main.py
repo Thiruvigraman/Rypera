@@ -1,7 +1,7 @@
 import json
 import os
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # 🔹 Load or Create Movie Storage File
 STORAGE_FILE = "storage.json"
