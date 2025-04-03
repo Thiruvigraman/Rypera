@@ -1,12 +1,19 @@
 import os
 import json
+import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_ID = int(os.getenv('ADMIN_ID'))
+ADMIN_ID = os.getenv('ADMIN_ID')
+
+if not BOT_TOKEN:
+    raise ValueError("Error: BOT_TOKEN is missing from environment variables.")
+if not ADMIN_ID:
+    raise ValueError("Error: ADMIN_ID is missing from environment variables.")
+ADMIN_ID = int(ADMIN_ID)
 
 # File to store movie data
 STORAGE_FILE = 'storage.json'
@@ -14,27 +21,37 @@ STORAGE_FILE = 'storage.json'
 # Load existing movie data
 def load_movies():
     if os.path.exists(STORAGE_FILE):
-        with open(STORAGE_FILE, 'r') as f:
-            return json.load(f)
+        try:
+            with open(STORAGE_FILE, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return {}  # Return empty dictionary if file is corrupted
     return {}
 
 # Save movie data
 def save_movies(movies):
     with open(STORAGE_FILE, 'w') as f:
-        json.dump(movies, f)
+        json.dump(movies, f, indent=4)
 
 # Default route
 @app.route('/')
 def index():
     return "Bot is running!"
 
-# Webhook handler
-@app.route('/', methods=['POST'])
+# Webhook handler (Fixed URL)
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     update = request.get_json()
+    
+    if 'message' not in update:
+        return jsonify({"error": "No message found"}), 400
+    
     chat_id = update['message']['chat']['id']
     user_id = update['message']['from']['id']
-    command = update['message']['text'].split()
+    command = update['message'].get('text', '').split()
+
+    if not command:
+        return jsonify({"error": "No command found"}), 400
 
     if command[0] == '/start':
         send_message(chat_id, "Welcome to the Movie Bot!")
@@ -85,7 +102,8 @@ def send_message(chat_id, text):
 # Set webhook
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://rypera.onrender.com/{BOT_TOKEN}'
+    webhook_url = f'https://rypera.onrender.com/{BOT_TOKEN}'
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}'
     response = requests.get(url)
     return jsonify(response.json())
 
