@@ -20,7 +20,7 @@ This is a **Telegram bot** that automates movie file sharing
 | File Name       | Description |
 |----------------|-------------|
 | `main.py`       | Main bot script |
-| `movies.json`   | Stores movie message IDs |
+| `storage.json`   | Stores message IDs |
 | `requirements.txt` | Python dependencies |
 | `README.md`    | This documentation |
 
