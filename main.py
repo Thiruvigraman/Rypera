@@ -38,65 +38,80 @@ def save_movies(movies):
 def index():
     return "Bot is running!"
 
-# Webhook handler (Fixed URL)
+# Webhook handler
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     update = request.get_json()
-    
+
     if 'message' not in update:
         return jsonify({"error": "No message found"}), 400
-    
-    chat_id = update['message']['chat']['id']
-    user_id = update['message']['from']['id']
-    command = update['message'].get('text', '').split()
 
-    if not command:
-        return jsonify({"error": "No command found"}), 400
+    message = update['message']
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
 
-    if command[0] == '/start':
-        send_message(chat_id, "Welcome to the Movie Bot!")
+    # If the message is forwarded
+    if 'forward_from' in message or 'forward_from_chat' in message:
+        if user_id == ADMIN_ID:
+            file_info = None
+            movie_name = f"Movie_{len(load_movies()) + 1}"
 
-    elif user_id == ADMIN_ID:
-        if command[0] == '/add_movie' and len(command) == 3:
-            movie_name = command[1]
-            link = command[2]
-            movies = load_movies()
-            movies[movie_name] = link
-            save_movies(movies)
-            send_message(chat_id, f"Movie '{movie_name}' added.")
+            # Check for document, video, or audio
+            if 'document' in message:
+                file_info = message['document']['file_id']
+            elif 'video' in message:
+                file_info = message['video']['file_id']
+            elif 'audio' in message:
+                file_info = message['audio']['file_id']
 
-        elif command[0] == '/delete_movie' and len(command) == 2:
-            movie_name = command[1]
-            movies = load_movies()
-            if movie_name in movies:
-                del movies[movie_name]
+            if file_info:
+                movies = load_movies()
+                movies[movie_name] = file_info
                 save_movies(movies)
-                send_message(chat_id, f"Movie '{movie_name}' deleted.")
+                send_message(chat_id, f"Movie '{movie_name}' saved with File ID.")
             else:
-                send_message(chat_id, f"Movie '{movie_name}' not found.")
+                send_message(chat_id, "No valid file found in the forwarded message.")
 
-        elif command[0] == '/list_movies':
-            movies = load_movies()
-            if movies:
-                movie_list = "\n".join(f"{name}: {link}" for name, link in movies.items())
-                send_message(chat_id, f"Stored Movies:\n{movie_list}")
-            else:
-                send_message(chat_id, "No movies stored.")
+    # Process commands
+    elif 'text' in message:
+        command = message['text'].split()
 
-        elif command[0] == '/get_movie_link' and len(command) == 2:
-            movie_name = command[1]
-            movies = load_movies()
-            if movie_name in movies:
-                send_message(chat_id, f"Link for '{movie_name}': {movies[movie_name]}")
-            else:
-                send_message(chat_id, f"Movie '{movie_name}' not found.")
+        if command[0] == '/start':
+            send_message(chat_id, "Welcome to the Movie Bot! Send me a movie file by forwarding it.")
+
+        elif user_id == ADMIN_ID:
+            if command[0] == '/list_movies':
+                movies = load_movies()
+                if movies:
+                    movie_list = "\n".join(f"{name}: {link}" for name, link in movies.items())
+                    send_message(chat_id, f"Stored Movies:\n{movie_list}")
+                else:
+                    send_message(chat_id, "No movies stored.")
+
+            elif command[0] == '/get_movie_link' and len(command) == 2:
+                movie_name = command[1]
+                movies = load_movies()
+                if movie_name in movies:
+                    send_message(chat_id, f"File ID for '{movie_name}': `{movies[movie_name]}`")
+                else:
+                    send_message(chat_id, f"Movie '{movie_name}' not found.")
+
+            elif command[0] == '/delete_movie' and len(command) == 2:
+                movie_name = command[1]
+                movies = load_movies()
+                if movie_name in movies:
+                    del movies[movie_name]
+                    save_movies(movies)
+                    send_message(chat_id, f"Movie '{movie_name}' deleted.")
+                else:
+                    send_message(chat_id, f"Movie '{movie_name}' not found.")
 
     return jsonify(success=True)
 
 # Function to send messages to Telegram
 def send_message(chat_id, text):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    payload = {'chat_id': chat_id, 'text': text}
+    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
     requests.post(url, json=payload)
 
 # Set webhook
