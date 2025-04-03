@@ -20,11 +20,11 @@ def save_movies(movies):
 
 movies = load_movies()
 
-# 🔹 Your Telegram Bot Token
-TOKEN = "YOUR_BOT_TOKEN"  # bot token
-ADMIN_ID = 6778132055  # Telegram User ID
+# 🔹 Your Telegram Bot Token & Admin ID
+TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
+ADMIN_ID = 6778132055  # Replace with your Telegram User ID
 
-# 🔹 Start Command
+# 🔹 Start Command (Users can fetch movies)
 def start(update: Update, context: CallbackContext):
     args = context.args
     if args:
@@ -52,7 +52,7 @@ def store_movie(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("❌ Please send a movie file.")
 
-# 🔹 Get Link for a Movie (Admin Only)
+# 🔹 Get Movie Link (Admin Only)
 def get_movie_link(update: Update, context: CallbackContext):
     if update.message.from_user.id != ADMIN_ID:
         update.message.reply_text("🚫 You are not allowed to use this command.")
@@ -70,7 +70,7 @@ def get_movie_link(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("❌ Movie not found.")
 
-# 🔹 Delete a Movie (Admin Only)
+# 🔹 Delete Movie (Admin Only)
 def delete_movie(update: Update, context: CallbackContext):
     if update.message.from_user.id != ADMIN_ID:
         update.message.reply_text("🚫 You are not allowed to delete movies.")
@@ -110,7 +110,7 @@ def main():
     dp.add_handler(MessageHandler(Filters.document | Filters.video, store_movie))
     dp.add_handler(CommandHandler("getlink", get_movie_link, pass_args=True))
     dp.add_handler(CommandHandler("delete", delete_movie, pass_args=True))
-    dp.add_handler(CommandHandler("listmovies", list_movies))  # 👈 New Command
+    dp.add_handler(CommandHandler("listmovies", list_movies))  # ✅ Shows all stored movies
 
     updater.start_polling()
     updater.idle()
