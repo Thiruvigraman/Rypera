@@ -88,7 +88,7 @@ async def list_movies(update: Update, context: CallbackContext):
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("getlink", get_link))
 application.add_handler(CommandHandler("list", list_movies))
-application.add_handler(MessageHandler(filters.Document.ALL | filters.Video, handle_file))
+application.add_handler(MessageHandler(filters.ATTACHMENT, handle_file))
 
 # Flask route for webhook
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
