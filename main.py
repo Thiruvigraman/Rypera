@@ -157,7 +157,7 @@ def process_update(update):
         return
 
 # Webhook endpoint
-@app.route(f'/8169755402:AAGJoZ_8yXhp02uq2bI5qVytY-jPSd__99c', methods=['POST'])  # This is critical
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])  # This is critical
 def handle_webhook():
     try:
         update = request.get_json()
