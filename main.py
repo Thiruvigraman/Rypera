@@ -33,7 +33,9 @@ def load_movies():
     if os.path.exists(STORAGE_FILE):
         try:
             with open(STORAGE_FILE, 'r') as f:
-                return json.load(f)
+                movies = json.load(f)
+                print(f"Loaded movies: {movies}")
+                return movies
         except json.JSONDecodeError:
             return {}
     return {}
@@ -41,6 +43,7 @@ def load_movies():
 # Save movies to JSON
 def save_movies(movies):
     with open(STORAGE_FILE, 'w') as f:
+        print(f"Saving movies: {movies}")
         json.dump(movies, f, indent=4)
 
 # Send a message to a chat
