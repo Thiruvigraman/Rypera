@@ -6,10 +6,6 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot is running!", 200  # Response for the root URL
-
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = os.getenv('ADMIN_ID')
@@ -33,9 +29,7 @@ def load_movies():
     if os.path.exists(STORAGE_FILE):
         try:
             with open(STORAGE_FILE, 'r') as f:
-                movies = json.load(f)
-                print(f"Loaded movies: {movies}")
-                return movies
+                return json.load(f)
         except json.JSONDecodeError:
             return {}
     return {}
@@ -43,7 +37,6 @@ def load_movies():
 # Save movies to JSON
 def save_movies(movies):
     with open(STORAGE_FILE, 'w') as f:
-        print(f"Saving movies: {movies}")
         json.dump(movies, f, indent=4)
 
 # Send a message to a chat
@@ -161,7 +154,7 @@ def process_update(update):
         return
 
 # Flask webhook endpoint
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+@app.route('/new-webhook', methods=['POST'])
 def handle_webhook():
     try:
         update = request.get_json()
