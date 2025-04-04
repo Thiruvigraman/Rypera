@@ -6,10 +6,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
- @app.route("/", methods=["GET"])
+@app.route("/", methods=["GET"])
 def home():
-    return "Bot is running!", 200  
-# Response for the root URL
+    return "Bot is running!", 200  # Response for the root URL
 
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
