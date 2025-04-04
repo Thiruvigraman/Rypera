@@ -6,6 +6,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+@app.route(f'/{BOT_TOKEN}', methods=['POST']) 
+def handle_webhook():
+
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = os.getenv('ADMIN_ID')
