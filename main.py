@@ -6,8 +6,10 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route(f'/{BOT_TOKEN}', methods=['POST']) 
-def handle_webhook():
+ @app.route("/", methods=["GET"])
+def home():
+    return "Bot is running!", 200  
+# Response for the root URL
 
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
