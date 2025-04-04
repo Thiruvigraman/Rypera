@@ -6,25 +6,29 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load environment variables
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot is running!", 200
+
+# ENV Variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = os.getenv('ADMIN_ID')
-BOT_USERNAME = os.getenv('BOT_USERNAME')  # Needed for generating links
+BOT_USERNAME = os.getenv('BOT_USERNAME')  # Example: your_bot_name (without @)
 DISCORD_WEBHOOK = os.getenv('DISCORD_WEBHOOK')
 
 if not BOT_TOKEN or not ADMIN_ID or not BOT_USERNAME:
-    raise ValueError("Error: Missing BOT_TOKEN, ADMIN_ID, or BOT_USERNAME in environment variables.")
+    raise ValueError("Missing environment variables")
 
 ADMIN_ID = int(ADMIN_ID)
 STORAGE_FILE = 'storage.json'
 TEMP_FILE_IDS = {}
 
-# Function to log errors to Discord (if webhook is set)
+# Log errors to Discord
 def log_to_discord(message):
     if DISCORD_WEBHOOK:
         requests.post(DISCORD_WEBHOOK, json={"content": message})
 
-# Load stored movies from JSON
+# Load/save movies
 def load_movies():
     if os.path.exists(STORAGE_FILE):
         try:
@@ -34,18 +38,16 @@ def load_movies():
             return {}
     return {}
 
-# Save movies to JSON
 def save_movies(movies):
     with open(STORAGE_FILE, 'w') as f:
         json.dump(movies, f, indent=4)
 
-# Send a message to a chat
+# Telegram actions
 def send_message(chat_id, text):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
     requests.post(url, json=payload)
 
-# Send a file stored in Telegram using file_id
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': chat_id, 'document': file_id}
@@ -57,13 +59,12 @@ def send_file(chat_id, file_id):
         threading.Timer(1800, delete_message, args=[chat_id, message_id]).start()
         send_message(chat_id, "This file will be automatically deleted after 30 minutes.")
 
-# Delete a message
 def delete_message(chat_id, message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
     payload = {'chat_id': chat_id, 'message_id': message_id}
     requests.post(url, json=payload)
 
-# Process incoming Telegram messages
+# Main update handler
 def process_update(update):
     if 'message' not in update:
         return
@@ -74,14 +75,14 @@ def process_update(update):
     document = update['message'].get('document')
     video = update['message'].get('video')
 
-    # Handle forwarded files from admin
+    # Admin sending file
     if (document or video) and user_id == ADMIN_ID:
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
         return
 
-    # Store the forwarded file with a name
+    # Admin assigning name to file
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
         movies = load_movies()
         movies[text] = {"file_id": TEMP_FILE_IDS[chat_id]}
@@ -90,13 +91,14 @@ def process_update(update):
         del TEMP_FILE_IDS[chat_id]
         return
 
-    # Handle /list_files command (Admin Only)
+    # List stored files
     if text == '/list_files' and user_id == ADMIN_ID:
         movies = load_movies()
-        send_message(chat_id, "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored.")
+        msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
+        send_message(chat_id, msg)
         return
 
-    # Handle /rename_file command (Admin Only)
+    # Rename file
     if text.startswith('/rename_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=2)
         if len(parts) < 3:
@@ -112,7 +114,7 @@ def process_update(update):
                 send_message(chat_id, f"Movie '{old_name}' not found.")
         return
 
-    # Handle /delete_file command (Admin Only)
+    # Delete file
     if text.startswith('/delete_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -128,7 +130,7 @@ def process_update(update):
                 send_message(chat_id, f"Movie '{file_name}' not found.")
         return
 
-    # Handle /get_movie_link command (Admin Only)
+    # Get movie link
     if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -137,13 +139,14 @@ def process_update(update):
         movie_name = parts[1]
         movies = load_movies()
         if movie_name in movies:
-            movie_link = f"https://t.me/{BOT_USERNAME}?start={movie_name.replace(' ', '_')}"
-            send_message(chat_id, f"Click here to get the movie: {movie_link}\nThis file will be automatically deleted after 30 minutes.")
+            safe_name = movie_name.replace(" ", "_")
+            movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
+            send_message(chat_id, f"Click here to get the movie: {movie_link}")
         else:
-            send_message(chat_id, f"Movie '{movie_name}' not found in storage.")
+            send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-    # Handle /start command when user clicks the generated link
+    # Handle /start link
     if text.startswith('/start '):
         movie_name = text.replace('/start ', '').replace('_', ' ')
         movies = load_movies()
@@ -153,8 +156,8 @@ def process_update(update):
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-# Flask webhook endpoint
-@app.route('/new-webhook', methods=['POST'])
+# Webhook endpoint
+@app.route(f'/8169755402:AAGJoZ_8yXhp02uq2bI5qVytY-jPSd__99c', methods=['POST'])  # This is critical
 def handle_webhook():
     try:
         update = request.get_json()
@@ -164,5 +167,6 @@ def handle_webhook():
         log_to_discord(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+# Run
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
