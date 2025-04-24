@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 import threading
 import atexit
@@ -37,8 +38,8 @@ def log_to_discord(webhook, message):
     if webhook:
         try:
             requests.post(webhook, json={"content": message})
-        except:
-            pass
+        except Exception as e:
+            print(f"Error logging to Discord: {e}")
 
 # MongoDB Setup
 try:
@@ -162,46 +163,41 @@ def process_update(update):
         data = r.json()
         if data.get("ok") and data['result']['status'] in ['administrator', 'creator']:
             register_channel(channel)
-            caption = (
-                "🎬 *𝐕𝐞𝐞𝐫𝐚 𝐃𝐡𝐞𝐞𝐫𝐚 𝐒𝐨𝐨𝐫𝐚𝐧 𝟐𝟎𝟐𝟓*\n"
-                "🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m 08s\n\n"
-                "📥 *Download Links:*"
-            )
-            buttons = [
-                [
-                    {"text": "480p", "url": "https://t.me/Vanmam_thavir_bot?start=Veera_dheera_sooran_pt2_tam_480p"},
-                    {"text": "720p", "url": "https://t.me/Vanmam_thavir_bot?start=Veera_dheera_sooran_pt2_tam_720p"},
-                ],
-                [
-                    {"text": "1080p", "url": "https://t.me/Vanmam_thavir_bot?start=Veera_dheera_sooran_pt2_tam_1080p"},
-                    {"text": "HDRip", "url": "https://t.me/Vanmam_thavir_bot?start=Veera_dheera_sooran_pt2_tam_hdrip"},
-                ]
-            ]
-            reply_markup = {"inline_keyboard": buttons}
-            media_id = MEDIA_UPLOADS.pop(chat_id, None)
-            if media_id:
-                send_media(channel, caption, media_id, reply_markup)
-            else:
-                send_message(channel, caption, parse_mode="Markdown", reply_markup=reply_markup)
-            send_message(chat_id, f"Message sent to {channel}")
+            send_message(chat_id, f"Bot is an admin in {channel}. Now, send the caption for the movie post.")
         else:
             send_message(chat_id, f"Bot is not admin in {channel}. Add the bot as admin and try again.")
+            return
+
+    if text.startswith('/send_message_caption'):
+        send_message(chat_id, "Send the caption text for the movie post.")
         return
 
-    if (document or video) and user_id == ADMIN_ID:
-        file_id = document['file_id'] if document else video['file_id']
-        TEMP_FILE_IDS[chat_id] = file_id
-        send_message(chat_id, "Send the name of this movie to store it:")
+    if text.startswith('/send_message_buttons'):
+        send_message(chat_id, "Send inline buttons in this format:\nText1 - URL1\nText2 - URL2\n...")
         return
 
-    if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
-        save_movie(text, TEMP_FILE_IDS[chat_id])
-        send_message(chat_id, f"Movie '{text}' has been added.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}")
-        del TEMP_FILE_IDS[chat_id]
+    if text.startswith('/send_message_preview'):
+        caption = "🎬 *Movie Title 2025*\n🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m"
+        buttons = [
+            [{"text": "480p", "url": "https://t.me/YourBot?start=Movie_480p"}],
+            [{"text": "720p", "url": "https://t.me/YourBot?start=Movie_720p"}]
+        ]
+        reply_markup = {"inline_keyboard": buttons}
+        send_message(chat_id, "Here is a preview of your post:", reply_markup=reply_markup)
         return
 
-    if text == '/list_files':
+    if text.startswith('/send_message_post'):
+        caption = "🎬 *Movie Title 2025*\n🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m"
+        media_id = MEDIA_UPLOADS.get(chat_id, None)
+        if media_id:
+            send_media(channel, caption, media_id, reply_markup)
+        else:
+            send_message(channel, caption, reply_markup=reply_markup)
+
+        send_message(chat_id, f"Message sent to {channel}")
+        return
+
+    if text.startswith('/list_files'):
         movies = load_movies()
         msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
         send_message(chat_id, msg)
@@ -256,6 +252,12 @@ def process_update(update):
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    # Log the error to Discord
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"⚠️ Error occurred: {str(error)}")
+    return jsonify({"error": str(error)}), 500
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
