@@ -131,6 +131,9 @@ def delete_message(chat_id, message_id):
     payload = {'chat_id': chat_id, 'message_id': message_id}
     requests.post(url, json=payload)
 
+# USER_STATE to manage the state of each user
+USER_STATE = {}
+
 # Main update handler
 def process_update(update):
     if 'message' not in update:
@@ -164,93 +167,33 @@ def process_update(update):
         if data.get("ok") and data['result']['status'] in ['administrator', 'creator']:
             register_channel(channel)
             send_message(chat_id, f"Bot is an admin in {channel}. Now, send the caption for the movie post.")
+            USER_STATE[user_id] = 'waiting_for_caption'  # Track state
         else:
             send_message(chat_id, f"Bot is not admin in {channel}. Add the bot as admin and try again.")
             return
 
-    if text.startswith('/send_message_caption'):
-        send_message(chat_id, "Send the caption text for the movie post.")
+    if user_id in USER_STATE and USER_STATE[user_id] == 'waiting_for_caption':
+        caption = text  # Capture the caption provided by the admin
+        USER_STATE[user_id] = 'waiting_for_buttons'  # Now track that it's waiting for buttons
+        send_message(chat_id, "Now, send inline buttons in this format:\nText1 - URL1\nText2 - URL2\n...")
         return
 
-    if text.startswith('/send_message_buttons'):
-        send_message(chat_id, "Send inline buttons in this format:\nText1 - URL1\nText2 - URL2\n...")
+    if user_id in USER_STATE and USER_STATE[user_id] == 'waiting_for_buttons':
+        buttons = text  # Capture the buttons input by the admin
+        USER_STATE[user_id] = 'waiting_for_preview'  # Track that it's waiting for preview
+        send_message(chat_id, "Here is a preview of your post with the caption and buttons.")
+        # Provide a preview of the post
+        preview_caption = "🎬 *Movie Title 2025*\n🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m"
+        reply_markup = {"inline_keyboard": [
+            [{"text": "480p", "url": "https://example.com/480p"}],
+            [{"text": "720p", "url": "https://example.com/720p"}]
+        ]}
+        send_message(chat_id, preview_caption, reply_markup=reply_markup)
         return
 
-    if text.startswith('/send_message_preview'):
-        caption = "🎬 *Movie Title 2025*\n🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m"
-        buttons = [
-            [{"text": "480p", "url": "https://t.me/YourBot?start=Movie_480p"}],
-            [{"text": "720p", "url": "https://t.me/YourBot?start=Movie_720p"}]
-        ]
-        reply_markup = {"inline_keyboard": buttons}
-        send_message(chat_id, "Here is a preview of your post:", reply_markup=reply_markup)
-        return
-
-    if text.startswith('/send_message_post'):
-        caption = "🎬 *Movie Title 2025*\n🔊 Tamil Audio\n📜 English Subtitles\n⏳ Duration: 2h 42m"
-        media_id = MEDIA_UPLOADS.get(chat_id, None)
-        if media_id:
-            send_media(channel, caption, media_id, reply_markup)
-        else:
-            send_message(channel, caption, reply_markup=reply_markup)
-
-        send_message(chat_id, f"Message sent to {channel}")
-        return
-
-    if text.startswith('/list_files'):
-        movies = load_movies()
-        msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
-        send_message(chat_id, msg)
-        return
-
-    if text.startswith('/rename_file'):
-        parts = text.split(maxsplit=2)
-        if len(parts) < 3:
-            send_message(chat_id, "Usage: /rename_file OldName NewName")
-        else:
-            _, old_name, new_name = parts
-            if rename_movie(old_name, new_name):
-                send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'")
-            else:
-                send_message(chat_id, f"Movie '{old_name}' not found.")
-        return
-
-    if text.startswith('/delete_file'):
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            send_message(chat_id, "Usage: /delete_file FileName")
-        else:
-            file_name = parts[1]
-            delete_movie(file_name)
-            send_message(chat_id, f"Deleted '{file_name}'.")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
-        return
-
-    if text.startswith('/get_movie_link'):
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            send_message(chat_id, "Usage: /get_movie_link Movie Name")
-            return
-        movie_name = parts[1]
-        movies = load_movies()
-        if movie_name in movies:
-            safe_name = movie_name.replace(" ", "_")
-            movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
-            send_message(chat_id, f"Click here to get the movie: {movie_link}")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}")
-        else:
-            send_message(chat_id, f"Movie '{movie_name}' not found.")
-        return
-
-    if text.startswith('/start '):
-        movie_name = text.replace('/start ', '').replace('_', ' ')
-        movies = load_movies()
-        if movie_name in movies and 'file_id' in movies[movie_name]:
-            send_file(chat_id, movies[movie_name]['file_id'])
-            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}")
-        else:
-            send_message(chat_id, f"Movie '{movie_name}' not found.")
+    if user_id in USER_STATE and USER_STATE[user_id] == 'waiting_for_preview':
+        send_message(chat_id, "Post sent to the channel.")
+        USER_STATE.pop(user_id)  # Reset the state after the process is completed
         return
 
 @app.errorhandler(Exception)
