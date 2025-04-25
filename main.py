@@ -5,15 +5,11 @@ import json
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
 from telegram.ext import CommandHandler, MessageHandler, filters, Application
-from dotenv import load_dotenv
-from db import save_movie
-from bot import start, help, forward_movie, save_movie_name, get_movie_link
 from discord_webhook import log_bot_status  # Import the logging function
 from threading import Thread
 
-load_dotenv()
-
-DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
+# Directly insert the Bot Token here
+BOT_TOKEN = "8169755402:AAGJoZ_8yXhp02uq2bI5qVytY-jPSd__99c"
 
 app = Flask(__name__)
 
@@ -42,12 +38,12 @@ def webhook(bot_token):
     Returns:
     Response: HTTP response.
     """
-    if bot_token != os.getenv('BOT_TOKEN'):
+    if bot_token != BOT_TOKEN:
         return 'Unauthorized', 403  # Unauthorized if the bot token doesn't match
 
     try:
         json_str = request.get_data().decode('UTF-8')
-        bot = Bot(os.getenv('BOT_TOKEN'))  # Initialize bot here if not passed
+        bot = Bot(BOT_TOKEN)  # Initialize bot here if not passed
         update = Update.de_json(json.loads(json_str), bot)
         if application:
             application.process_update(update)  # Ensure application is initialized before processing
@@ -62,7 +58,7 @@ def start_bot():
     global application  # Use global so that it's accessible in the webhook
 
     # Initialize the Application object
-    application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
+    application = Application.builder().token(BOT_TOKEN).build()
 
     # Add handlers
     application.add_handler(CommandHandler('start', start))
