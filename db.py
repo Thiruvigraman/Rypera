@@ -15,11 +15,12 @@ if not ADMIN_ID:
     raise ValueError("ADMIN_ID not set in environment variables. ❌")
 
 try:
+    # Connecting to MongoDB
     client = MongoClient(MONGO_URI)
     db = client['movie_bot']
     movies_collection = db['movies']
     channels_collection = db['channels']
-    
+
     log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), "🔗 Successfully connected to MongoDB. ✅")
 except Exception as e:
     log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"⚠️ Error connecting to MongoDB: {e} 🔴")
@@ -37,14 +38,19 @@ def is_admin(user_id: int) -> bool:
     """
     return str(user_id) == ADMIN_ID
 
-def load_movies() -> dict:
+def load_movies() -> list:
     """
     Load movies from the database.
     
     Returns:
-    dict: A dictionary of movies.
+    list: A list of movies.
     """
-    return {movie['name']: movie for movie in movies_collection.find()}
+    try:
+        movies = list(movies_collection.find())
+        return movies
+    except Exception as e:
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"⚠️ Failed to load movies: {e} 🔴")
+        return []
 
 def save_movie(user_id: int, name: str, file_id: str) -> None:
     """
@@ -57,11 +63,15 @@ def save_movie(user_id: int, name: str, file_id: str) -> None:
     """
     if not is_admin(user_id):
         raise PermissionError("🔒 You are not authorized to add a movie. 🚫")
-    
-    movie = {'name': name, 'file_id': file_id}
-    movies_collection.insert_one(movie)
-    
-    log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"🎥 Admin added a new movie: {name} with file_id: {file_id} 📎")
+
+    try:
+        movie = {'name': name, 'file_id': file_id}
+        movies_collection.insert_one(movie)
+
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"🎥 Admin added a new movie: {name} with file_id: {file_id} 📎")
+    except Exception as e:
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"⚠️ Error saving movie '{name}': {e} 🔴")
+        raise Exception(f"⚠️ Error saving movie: {e}")
 
 def delete_movie(user_id: int, name: str) -> None:
     """
@@ -73,10 +83,16 @@ def delete_movie(user_id: int, name: str) -> None:
     """
     if not is_admin(user_id):
         raise PermissionError("🔒 You are not authorized to delete a movie. 🚫")
-    
-    movies_collection.delete_one({'name': name})
-    
-    log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"🗑️ Admin deleted movie: {name} 🔴")
+
+    try:
+        result = movies_collection.delete_one({'name': name})
+        if result.deleted_count > 0:
+            log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"🗑️ Admin deleted movie: {name} 🔴")
+        else:
+            log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"⚠️ Movie '{name}' not found for deletion.")
+    except Exception as e:
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"⚠️ Error deleting movie '{name}': {e} 🔴")
+        raise Exception(f"⚠️ Error deleting movie: {e}")
 
 def rename_movie(user_id: int, old_name: str, new_name: str) -> bool:
     """
@@ -92,10 +108,13 @@ def rename_movie(user_id: int, old_name: str, new_name: str) -> bool:
     """
     if not is_admin(user_id):
         raise PermissionError("🔒 You are not authorized to rename a movie. 🚫")
-    
-    result = movies_collection.update_one({'name': old_name}, {'$set': {'name': new_name}})
-    
-    if result.modified_count > 0:
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"📝 Admin renamed movie: {old_name} to {new_name} ✨")
-        return True
-    return False
+
+    try:
+        result = movies_collection.update_one({'name': old_name}, {'$set': {'name': new_name}})
+        if result.modified_count > 0:
+            log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"📝 Admin renamed movie: {old_name} to {new_name} ✨")
+            return True
+        return False
+    except Exception as e:
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"⚠️ Error renaming movie '{old_name}' to '{new_name}': {e} 🔴")
+        raise Exception(f"⚠️ Error renaming movie: {e}")
