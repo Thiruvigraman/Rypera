@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from db import save_movie
 from bot import start, help, forward_movie, save_movie_name, get_movie_link
 from discord_webhook import log_bot_status  # Import the logging function
+from threading import Thread
 
 load_dotenv()
 
@@ -26,16 +27,6 @@ def health():
     """
     return "✅ Bot is running!"
 
-@app.route('/', methods=['GET'])
-def home():
-    """
-    Root endpoint (optional). Can be used for basic information or redirection.
-    
-    Returns:
-    str: A message or redirect response.
-    """
-    return "Welcome to the bot service! Use /health for status."
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """
@@ -44,20 +35,21 @@ def webhook():
     Returns:
     Response: HTTP response.
     """
-    json_str = request.get_data().decode('UTF-8')
-    update = Update.de_json(json.loads(json_str), bot)
-    application.process_update(update)
+    try:
+        json_str = request.get_data().decode('UTF-8')
+        bot = Bot(os.getenv('BOT_TOKEN'))  # Initialize bot here if not passed
+        update = Update.de_json(json.loads(json_str), bot)
+        application.process_update(update)
+    except Exception as e:
+        app.logger.error(f"Error in webhook: {e}")
     return 'OK'
 
-def main():
+def start_bot():
     """
-    Main function to set up the bot and start the Flask server.
+    Starts the Telegram bot in a separate thread.
     """
     bot = Bot(os.getenv('BOT_TOKEN'))
     application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
-
-    # Log bot online status
-    log_bot_status("online")
 
     # Add handlers
     application.add_handler(CommandHandler('start', start))
@@ -66,11 +58,25 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_movie_name))
     application.add_handler(CommandHandler('get_movie_link', get_movie_link))
 
-    # Start the application in a background thread (as Flask is blocking)
-    atexit.register(lambda: log_bot_status("offline", "Turned off by user"))  # Logs offline with reason on shutdown
+    # Start the bot
+    application.run_polling()
 
-    # Run the Flask app
+def main():
+    """
+    Main function to set up the bot and start the Flask server.
+    """
+    # Log bot online status
+    log_bot_status("online")
+
+    # Start the Telegram bot in a separate thread
+    bot_thread = Thread(target=start_bot)
+    bot_thread.start()
+
+    # Run Flask
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
+
+    # Register an exit function to log when the bot goes offline
+    atexit.register(lambda: log_bot_status("offline", "Turned off by user"))  # Logs offline with reason on shutdown
 
 if __name__ == '__main__':
     main()
