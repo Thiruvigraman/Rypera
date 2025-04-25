@@ -1,7 +1,6 @@
-import requests
 import os
+import requests
 from dotenv import load_dotenv
-from discord_webhook import log_to_discord
 
 load_dotenv()
 
@@ -10,7 +9,7 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 def send_message(chat_id: str, text: str) -> requests.Response:
     """
-    Send a message to a chat.
+    Send a message to a Telegram chat.
     """
     url = f"{BASE_URL}/sendMessage"
     data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
@@ -24,16 +23,24 @@ def send_message(chat_id: str, text: str) -> requests.Response:
         print(f"❌ Failed to send message: {e}")
     return response
 
+def log_to_discord(webhook_url, message):
+    """
+    Log the activity to a Discord webhook.
+    """
+    data = {'content': message}
+    response = requests.post(webhook_url, json=data)
+    return response
+
 def start(update, context):
     """
-    Start command handler.
+    /start command handler.
     """
     welcome_message = "Welcome to the Movie Bot! Use /help to see the available commands."
     send_message(update.message.chat_id, welcome_message)
 
 def help(update, context):
     """
-    Help command handler.
+    /help command handler.
     """
     help_message = "Here are the available commands:\n/start - Start the bot\n/help - Show help"
     send_message(update.message.chat_id, help_message)
