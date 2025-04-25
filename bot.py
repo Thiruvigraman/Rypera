@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+from discord_webhook import log_movie_action, log_error  # Import log functions
 
 load_dotenv()
 
@@ -19,7 +20,7 @@ def send_message(chat_id: str, text: str) -> requests.Response:
         response.raise_for_status()
         log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"✅ Message sent to {chat_id}: {text}")
     except Exception as e:
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"❌ Failed to send message to {chat_id}: {e} 🔴")
+        log_error(f"❌ Failed to send message to {chat_id}: {e}")
         print(f"❌ Failed to send message: {e}")
     return response
 
@@ -67,6 +68,7 @@ def save_movie_name(update, context):
     file_id = context.user_data['file_id']
     # Here you would save the movie data to the database or another storage.
     send_message(update.message.chat_id, f"🎬 Movie '{movie_name}' saved successfully!")
+    log_movie_action('added', movie_name, file_id)  # Log the movie action to Discord
 
 def get_movie_link(update, context):
     """
