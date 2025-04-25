@@ -6,14 +6,12 @@ from flask import Flask, request, jsonify
 from telegram import Bot, Update
 from telegram.ext import CommandHandler, MessageHandler, filters, Application
 from dotenv import load_dotenv
-from db import load_movies, save_movie, delete_movie, rename_movie
-from discord_webhook import log_to_discord
+from db import save_movie
 from bot import start, help, forward_movie, save_movie_name, get_movie_link
 
 load_dotenv()
 
 DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
-DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 
 app = Flask(__name__)
 
