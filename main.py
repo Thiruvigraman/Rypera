@@ -17,8 +17,9 @@ DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
 
 app = Flask(__name__)
 
-# Initialize application globally so it can be accessed in webhook
-application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
+@app.route('/')
+def home():
+    return "Welcome to the Movie Bot API!"  # Welcome message
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -30,12 +31,15 @@ def health():
     """
     return "✅ Bot is running!"
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
+@app.route('/<bot_token>', methods=['POST'])
+def webhook(bot_token):
     """
     Handles incoming webhook from Telegram.
+    
+    Returns:
+    Response: HTTP response.
     """
-    if request.headers.get('X-Telegram-Bot-Token') != os.getenv('BOT_TOKEN'):
+    if bot_token != os.getenv('BOT_TOKEN'):
         return 'Unauthorized', 403  # Unauthorized if the bot token doesn't match
 
     try:
@@ -45,23 +49,14 @@ def webhook():
         application.process_update(update)
     except Exception as e:
         app.logger.error(f"Error in webhook: {e}")
-        log_bot_status("offline", f"Error in webhook: {e}")
     return 'OK'
-
-def set_webhook():
-    """
-    Sets the webhook URL with Telegram API.
-    """
-    webhook_url = f"https://yourdomain.com/webhook"
-    bot = Bot(os.getenv('BOT_TOKEN'))
-    bot.set_webhook(webhook_url)
 
 def start_bot():
     """
     Starts the Telegram bot in a separate thread.
     """
-    # Set the webhook
-    set_webhook()
+    bot = Bot(os.getenv('BOT_TOKEN'))
+    application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
 
     # Add handlers
     application.add_handler(CommandHandler('start', start))
