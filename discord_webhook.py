@@ -1,3 +1,4 @@
+# discord_webhook.py
 import requests
 import os
 
@@ -10,7 +11,7 @@ def log_to_discord(webhook_url: str, message: str) -> None:
     message (str): The message to send.
     """
     data = {"content": message}
-    
+
     try:
         response = requests.post(webhook_url, json=data)
         response.raise_for_status()  # Check if the request was successful
@@ -53,3 +54,18 @@ def log_error(error_message: str) -> None:
     error_message (str): The error message to log.
     """
     log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"⚠️ Error: {error_message} ❌")
+
+def log_bot_status(status: str, reason: str = None) -> None:
+    """
+    Logs bot status (online/offline) to the Discord webhook with emojis.
+    
+    Args:
+    status (str): 'online' or 'offline'
+    reason (str, optional): The reason for being offline (e.g., "Turned off by user", "Crash due to overload")
+    """
+    if status == "offline" and reason:
+        log_status(f"🔴 **Bot is offline!** Reason: {reason} ❌")
+    elif status == "online":
+        log_status("🟢 **Bot is online!** 🚀")
+    else:
+        log_status("⚠️ **Unknown bot status!** ⚠️")
