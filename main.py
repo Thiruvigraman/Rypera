@@ -27,14 +27,17 @@ def health():
     """
     return "✅ Bot is running!"
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
+@app.route('/<bot_token>', methods=['POST'])
+def webhook(bot_token):
     """
     Handles incoming webhook from Telegram.
     
     Returns:
     Response: HTTP response.
     """
+    if bot_token != os.getenv('BOT_TOKEN'):
+        return 'Unauthorized', 403  # Unauthorized if the bot token doesn't match
+
     try:
         json_str = request.get_data().decode('UTF-8')
         bot = Bot(os.getenv('BOT_TOKEN'))  # Initialize bot here if not passed
