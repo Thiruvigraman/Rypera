@@ -1,7 +1,18 @@
+import os
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+from dotenv import load_dotenv
 
-client = MongoClient('your_mongo_uri_here')
+# Load environment variables
+load_dotenv()
+
+# Get Mongo URI from .env or Render environment settings
+MONGO_URI = os.getenv('MONGO_URI')
+if not MONGO_URI:
+    raise ValueError("MONGO_URI not set in environment variables.")
+
+# Connect to MongoDB
+client = MongoClient(MONGO_URI)
 db = client['movie_bot']
 movies_collection = db['movies']
 channels_collection = db['channels']
@@ -30,5 +41,5 @@ def register_channel(channel_id: str, channel_name: str):
     })
 
 def check_if_admin(channel_id: str):
-    # Logic to check if the bot is an admin in the channel
-    return True  # This should be replaced with actual logic.
+    # Replace this with real check if needed
+    return True
