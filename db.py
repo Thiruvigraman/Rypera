@@ -2,6 +2,7 @@ import os
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
+from discord_webhook import log_to_discord
 
 # Load environment variables
 load_dotenv()
@@ -12,10 +13,17 @@ if not MONGO_URI:
     raise ValueError("MONGO_URI not set in environment variables.")
 
 # Connect to MongoDB
-client = MongoClient(MONGO_URI)
-db = client['movie_bot']
-movies_collection = db['movies']
-channels_collection = db['channels']
+try:
+    client = MongoClient(MONGO_URI)
+    db = client['movie_bot']
+    movies_collection = db['movies']
+    channels_collection = db['channels']
+    # Log successful connection to Discord
+    log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), "Successfully connected to MongoDB.")
+except Exception as e:
+    # Log the connection error to Discord
+    log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"Error connecting to MongoDB: {e}")
+    raise Exception(f"Error connecting to MongoDB: {e}")
 
 def load_movies():
     return {movie['name']: movie for movie in movies_collection.find()}
