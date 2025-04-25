@@ -1,166 +1,136 @@
 import os
-import threading
-import requests
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-from db import load_movies, save_movie, delete_movie, rename_movie, register_channel, check_if_admin
-from bot import send_message, send_file
+import logging
 import atexit
-
+from flask import Flask, request, jsonify
+from telegram import Bot, Update
+from telegram.ext import CommandHandler, MessageHandler, Filters, Dispatcher
+from dotenv import load_dotenv
+from db import load_movies, save_movie, delete_movie, rename_movie
+from discord_webhook import log_to_discord
+from telegram import ParseMode
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
-app = Flask(__name__)
-
-# ENV Variables
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_ID = os.getenv('ADMIN_ID')
-BOT_USERNAME = os.getenv('BOT_USERNAME')
+# Set up logging to Discord
 DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 
-if not BOT_TOKEN or not ADMIN_ID or not BOT_USERNAME:
-    raise ValueError("Missing environment variables")
+# Set up the bot and Flask app
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+bot = Bot(BOT_TOKEN)
+app = Flask(__name__)
+dispatcher = Dispatcher(bot, update_queue=None)
 
-ADMIN_ID = int(ADMIN_ID)
-TEMP_FILE_IDS = {}
-
-# Webhook Logger
-def log_to_discord(webhook, message):
-    if webhook:
-        try:
-            requests.post(webhook, json={"content": message})
-        except Exception as e:
-            print(f"Error logging to Discord: {e}")
-
-# On startup
+# Log to Discord when bot is online
 log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now online!")
 
-# On exit
-
+# Register exit to log when the bot goes offline
 def on_exit():
     log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now offline.")
-
 atexit.register(on_exit)
 
-# Command to register a channel
-@app.route('/registerchannel', methods=['POST'])
-def register_channel_route():
-    data = request.get_json()
-    channel_id = data.get('channel_id')
-    channel_name = data.get('channel_name')
-    
-    if check_if_admin(channel_id):
-        register_channel(channel_id, channel_name)
-        return jsonify({"message": "Channel registered successfully."}), 200
-    else:
-        return jsonify({"error": "Bot is not an admin in the channel."}), 400
+# Command Handlers
+def start(update, context):
+    update.message.reply_text("Welcome! Type /help for available commands.")
 
-# Process update from Telegram
-def process_update(update):
-    if 'message' not in update:
-        return
+def help(update, context):
+    update.message.reply_text("""
+    Available Commands:
+    /add_movie - Add a new movie.
+    /delete_movie - Delete a movie.
+    /rename_movie - Rename a movie.
+    /get_movie_link - Get a movie link.
+    """)
 
-    chat_id = update['message']['chat']['id']
-    user_id = update['message']['from']['id']
-    text = update['message'].get('text', '')
-    document = update['message'].get('document')
-    video = update['message'].get('video')
+def add_movie(update, context):
+    chat_id = update.message.chat_id
+    user_id = update.message.from_user.id
 
-    # Admin uploading file
-    if (document or video) and user_id == ADMIN_ID:
-        file_id = document['file_id'] if document else video['file_id']
-        TEMP_FILE_IDS[chat_id] = file_id
-        send_message(chat_id, "Send the name of this movie to store it:")
-        return
-
-    # Admin naming movie
-    if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
-        save_movie(text, TEMP_FILE_IDS[chat_id])
-        send_message(chat_id, f"Movie '{text}' has been added.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}")
-        del TEMP_FILE_IDS[chat_id]
-        return
-
-    # List files
-    if text == '/list_files' and user_id == ADMIN_ID:
-        movies = load_movies()
-        msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
-        send_message(chat_id, msg)
-        return
-
-    # Rename file
-    if text.startswith('/rename_file') and user_id == ADMIN_ID:
-        parts = text.split(maxsplit=2)
-        if len(parts) < 3:
-            send_message(chat_id, "Usage: /rename_file OldName NewName")
-        else:
-            _, old_name, new_name = parts
-            if rename_movie(old_name, new_name):
-                send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'")
-            else:
-                send_message(chat_id, f"Movie '{old_name}' not found.")
-        return
-
-    # Delete file
-    if text.startswith('/delete_file') and user_id == ADMIN_ID:
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            send_message(chat_id, "Usage: /delete_file FileName")
-        else:
-            file_name = parts[1]
-            delete_movie(file_name)
-            send_message(chat_id, f"Deleted '{file_name}'.")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
-        return
-
-    # Generate movie link
-    if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            send_message(chat_id, "Usage: /get_movie_link Movie Name")
+    if user_id == int(os.getenv('ADMIN_ID')):
+        if len(context.args) < 2:
+            update.message.reply_text("Usage: /add_movie <movie_name> <file_id>")
             return
-        movie_name = parts[1]
-        movies = load_movies()
-        if movie_name in movies:
-            safe_name = movie_name.replace(" ", "_")
-            movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
-            send_message(chat_id, f"Click here to get the movie: {movie_link}")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}")
-        else:
-            send_message(chat_id, f"Movie '{movie_name}' not found.")
-        return
+        
+        movie_name = context.args[0]
+        file_id = context.args[1]
+        save_movie(movie_name, file_id)
+        
+        # Log the movie addition
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin added a new movie: {movie_name} with file_id: {file_id}")
+        update.message.reply_text(f"Movie '{movie_name}' has been added successfully.")
 
-    # User clicking movie link
-    if text.startswith('/start '):
-        movie_name = text.replace('/start ', '').replace('_', ' ')
-        movies = load_movies()
-        if movie_name in movies and 'file_id' in movies[movie_name]:
-            send_file(chat_id, movies[movie_name]['file_id'])
-            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}")
-        else:
-            send_message(chat_id, f"Movie '{movie_name}' not found.")
-        return
+def delete_movie(update, context):
+    chat_id = update.message.chat_id
+    user_id = update.message.from_user.id
 
-# Webhook Endpoint
+    if user_id == int(os.getenv('ADMIN_ID')):
+        if len(context.args) < 1:
+            update.message.reply_text("Usage: /delete_movie <movie_name>")
+            return
+        
+        movie_name = context.args[0]
+        delete_movie(movie_name)
+        
+        # Log the movie deletion
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin deleted movie: {movie_name}")
+        update.message.reply_text(f"Movie '{movie_name}' has been deleted successfully.")
+
+def rename_movie(update, context):
+    chat_id = update.message.chat_id
+    user_id = update.message.from_user.id
+
+    if user_id == int(os.getenv('ADMIN_ID')):
+        if len(context.args) < 2:
+            update.message.reply_text("Usage: /rename_movie <old_name> <new_name>")
+            return
+        
+        old_name = context.args[0]
+        new_name = context.args[1]
+        
+        if rename_movie(old_name, new_name):
+            # Log movie renaming
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin renamed movie: {old_name} to {new_name}")
+            update.message.reply_text(f"Movie '{old_name}' has been renamed to '{new_name}'.")
+        else:
+            update.message.reply_text(f"Movie '{old_name}' not found.")
+
+def get_movie_link(update, context):
+    movie_name = " ".join(context.args)
+    movies = load_movies()
+    
+    if movie_name in movies:
+        file_id = movies[movie_name]['file_id']
+        link = f"https://t.me/{bot.username}?start={file_id}"
+        
+        # Log the link generation
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated movie link for: {movie_name}")
+        update.message.reply_text(f"Click here to access the movie: {link}")
+    else:
+        update.message.reply_text(f"Movie '{movie_name}' not found.")
+
+# Add handlers to the dispatcher
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("help", help))
+dispatcher.add_handler(CommandHandler("add_movie", add_movie))
+dispatcher.add_handler(CommandHandler("delete_movie", delete_movie))
+dispatcher.add_handler(CommandHandler("rename_movie", rename_movie))
+dispatcher.add_handler(CommandHandler("get_movie_link", get_movie_link))
+
+# Webhook endpoint to handle requests
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
     try:
         update = request.get_json()
-        process_update(update)
+        dispatcher.process_update(Update.de_json(update, bot))
         return jsonify(success=True)
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error: {e}")
         return jsonify({"error": str(e)}), 500
- 
-@app.route('/')
-def home():
-    return "Telegram bot is running!"
 
-# Run the Flask app
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+# Set the webhook
+bot.set_webhook(url=f"https://{os.getenv('WEBHOOK_URL')}/{BOT_TOKEN}")
+
+if __name__ == "__main__":
+    app.run(port=5000)
