@@ -3,7 +3,7 @@ import logging
 import atexit
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
-from telegram.ext import CommandHandler, MessageHandler, Filters, Dispatcher
+from telegram.ext import CommandHandler, MessageHandler, filters, Dispatcher
 from dotenv import load_dotenv
 from db import load_movies, save_movie, delete_movie, rename_movie
 from discord_webhook import log_to_discord
@@ -33,7 +33,7 @@ atexit.register(on_exit)
 
 # Command Handlers
 def start(update, context):
-    update.message.reply_text("Welcome! Type /help for available commands.")
+    update.message.reply_text("Welcome! This is an files share bot.")
 
 def help(update, context):
     update.message.reply_text("""
