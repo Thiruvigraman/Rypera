@@ -8,6 +8,7 @@ from telegram.ext import CommandHandler, MessageHandler, filters, Application
 from dotenv import load_dotenv
 from db import save_movie
 from bot import start, help, forward_movie, save_movie_name, get_movie_link
+from discord_webhook import log_bot_status  # Import the logging function
 
 load_dotenv()
 
@@ -45,6 +46,9 @@ def main():
     bot = Bot(os.getenv('BOT_TOKEN'))
     application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
 
+    # Log bot online status
+    log_bot_status("online")
+
     # Add handlers
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('help', help))
@@ -53,7 +57,7 @@ def main():
     application.add_handler(CommandHandler('get_movie_link', get_movie_link))
 
     # Start the application in a background thread (as Flask is blocking)
-    atexit.register(application.stop)
+    atexit.register(lambda: log_bot_status("offline", "Turned off by user"))  # Logs offline with reason on shutdown
 
     # Run the Flask app
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
