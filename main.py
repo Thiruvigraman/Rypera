@@ -1,9 +1,10 @@
 import os
 import logging
 import atexit
+import json
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
-from telegram.ext import CommandHandler, Dispatcher, MessageHandler, Filters
+from telegram.ext import CommandHandler, MessageHandler, filters, Application
 from dotenv import load_dotenv
 from db import load_movies, save_movie, delete_movie, rename_movie
 from discord_webhook import log_to_discord
@@ -36,7 +37,7 @@ def webhook():
     """
     json_str = request.get_data().decode('UTF-8')
     update = Update.de_json(json.loads(json_str), bot)
-    dispatcher.process_update(update)
+    application.process_update(update)
     return 'OK'
 
 def main():
@@ -44,13 +45,19 @@ def main():
     Main function to set up the bot and start the Flask server.
     """
     bot = Bot(os.getenv('BOT_TOKEN'))
-    dispatcher = Dispatcher(bot, None)
-    dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('help', help))
-    dispatcher.add_handler(MessageHandler(Filters.document, forward_movie))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, save_movie_name))
-    dispatcher.add_handler(CommandHandler('get_movie_link', get_movie_link))
-    
+    application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
+
+    # Add handlers
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('help', help))
+    application.add_handler(MessageHandler(filters.Document.ALL, forward_movie))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_movie_name))
+    application.add_handler(CommandHandler('get_movie_link', get_movie_link))
+
+    # Start the application in a background thread (as Flask is blocking)
+    atexit.register(application.stop)
+
+    # Run the Flask app
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
 
 if __name__ == '__main__':
