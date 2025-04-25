@@ -14,7 +14,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 # Define the admin ID (replace with your own Telegram ID)
-ADMIN_ID = "YOUR_ADMIN_ID"
+ADMIN_ID = int(os.getenv("ADMIN_ID"))"
 
 # Set up webhook route for Telegram updates
 @app.route('/webhook/' + BOT_TOKEN, methods=['POST'])
