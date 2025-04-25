@@ -5,6 +5,8 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from db import load_movies, save_movie, delete_movie, rename_movie, register_channel, check_if_admin
 from bot import send_message, send_file
+import atexit
+
 
 # Load environment variables
 load_dotenv()
@@ -38,9 +40,11 @@ def log_to_discord(webhook, message):
 log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now online!")
 
 # On exit
-@app.before_first_request
+
 def on_exit():
     log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now offline.")
+
+atexit.register(on_exit)
 
 # Command to register a channel
 @app.route('/registerchannel', methods=['POST'])
