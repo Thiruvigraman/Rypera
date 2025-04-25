@@ -1,4 +1,3 @@
-# discord_webhook.py
 import requests
 import os
 
