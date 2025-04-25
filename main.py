@@ -17,6 +17,9 @@ DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
 
 app = Flask(__name__)
 
+# Initialize the application object here, so it's accessible in the webhook
+application = None
+
 @app.route('/')
 def home():
     return "Welcome to the Movie Bot API!"  # Welcome message
@@ -46,7 +49,8 @@ def webhook(bot_token):
         json_str = request.get_data().decode('UTF-8')
         bot = Bot(os.getenv('BOT_TOKEN'))  # Initialize bot here if not passed
         update = Update.de_json(json.loads(json_str), bot)
-        application.process_update(update)
+        if application:
+            application.process_update(update)  # Ensure application is initialized before processing
     except Exception as e:
         app.logger.error(f"Error in webhook: {e}")
     return 'OK'
@@ -55,7 +59,9 @@ def start_bot():
     """
     Starts the Telegram bot in a separate thread.
     """
-    bot = Bot(os.getenv('BOT_TOKEN'))
+    global application  # Use global so that it's accessible in the webhook
+
+    # Initialize the Application object
     application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
 
     # Add handlers
@@ -72,6 +78,8 @@ def main():
     """
     Main function to set up the bot and start the Flask server.
     """
+    global application  # Ensure the application is accessible in the main function
+
     # Log bot online status
     log_bot_status("online")
 
