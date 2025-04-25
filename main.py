@@ -26,6 +26,16 @@ def health():
     """
     return "✅ Bot is running!"
 
+@app.route('/', methods=['GET'])
+def home():
+    """
+    Root endpoint (optional). Can be used for basic information or redirection.
+    
+    Returns:
+    str: A message or redirect response.
+    """
+    return "Welcome to the bot service! Use /health for status."
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """
