@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from discord_webhook import log_to_discord
 from functools import wraps
+from db import save_movie, load_movies, delete_movie, rename_movie  # Import necessary functions from db
 
 load_dotenv()
 
@@ -57,7 +58,7 @@ def send_message(chat_id: str, text: str) -> requests.Response:
     """
     url = f"{BASE_URL}/sendMessage"
     data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
-    
+
     try:
         response = requests.post(url, data=data)
         response.raise_for_status()
@@ -97,4 +98,68 @@ def save_movie_name(update, context):
         return
     movie_name = update.message.text
     file_id = context.user_data['file_id']
-    save_movie
+    
+    # Save the movie details to the database
+    save_movie(file_id, movie_name)
+    send_message(update.message.chat_id, f"🎥 Movie '{movie_name}' has been saved successfully! 🎉")
+
+@admin_only
+def get_movie_link(update, context):
+    """
+    Get the movie link by name.
+    
+    Args:
+    update: The update object.
+    context: The context object.
+    """
+    movie_name = update.message.text.split(' ', 1)[1] if len(update.message.text.split(' ', 1)) > 1 else None
+    if movie_name:
+        movie = load_movies(movie_name)
+        if movie:
+            send_message(update.message.chat_id, f"🎬 Movie found: {movie_name}\nLink: {movie['link']}")
+        else:
+            send_message(update.message.chat_id, f"⚠️ Movie '{movie_name}' not found.")
+    else:
+        send_message(update.message.chat_id, "⚠️ Please provide a movie name.")
+
+@admin_only
+def delete_movie_command(update, context):
+    """
+    Delete a movie from the database.
+    
+    Args:
+    update: The update object.
+    context: The context object.
+    """
+    movie_name = update.message.text.split(' ', 1)[1] if len(update.message.text.split(' ', 1)) > 1 else None
+    if movie_name:
+        result = delete_movie(movie_name)
+        if result:
+            send_message(update.message.chat_id, f"🗑️ Movie '{movie_name}' has been deleted.")
+        else:
+            send_message(update.message.chat_id, f"⚠️ Movie '{movie_name}' not found.")
+    else:
+        send_message(update.message.chat_id, "⚠️ Please provide a movie name to delete.")
+
+@admin_only
+def rename_movie_command(update, context):
+    """
+    Rename a movie in the database.
+    
+    Args:
+    update: The update object.
+    context: The context object.
+    """
+    movie_name = update.message.text.split(' ', 1)[1] if len(update.message.text.split(' ', 1)) > 1 else None
+    if movie_name:
+        new_name = context.args[0] if len(context.args) > 0 else None
+        if new_name:
+            result = rename_movie(movie_name, new_name)
+            if result:
+                send_message(update.message.chat_id, f"✏️ Movie '{movie_name}' renamed to '{new_name}'.")
+            else:
+                send_message(update.message.chat_id, f"⚠️ Movie '{movie_name}' not found.")
+        else:
+            send_message(update.message.chat_id, "⚠️ Please provide a new name for the movie.")
+    else:
+        send_message(update.message.chat_id, "⚠️ Please provide the movie name to rename.")
