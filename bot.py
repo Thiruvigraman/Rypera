@@ -1,73 +1,92 @@
+import os
 import requests
+from flask import Flask, request
+from db import add_movie, get_movie, update_movie, delete_movie
+from dotenv import load_dotenv
 
-BOT_TOKEN = "8169755402:AAGJoZ_8yXhp02uq2bI5qVytY-jPSd__99c"
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# Load environment variables
+load_dotenv()
 
-def send_message(chat_id: str, text: str) -> requests.Response:
-    """
-    Send a message to a Telegram chat.
-    """
-    url = f"{BASE_URL}/sendMessage"
-    data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
+app = Flask(__name__)
 
-    try:
-        response = requests.post(url, data=data)
-        response.raise_for_status()
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"✅ Message sent to {chat_id}: {text}")
-    except Exception as e:
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), f"❌ Failed to send message to {chat_id}: {e} 🔴")
-        print(f"❌ Failed to send message: {e}")
-    return response
+# Get bot token and webhook URL from .env file
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-def log_to_discord(webhook_url, message):
-    """
-    Log the activity to a Discord webhook.
-    """
-    data = {'content': message}
-    response = requests.post(webhook_url, json=data)
-    return response
+# Define the admin ID (replace with your own Telegram ID)
+ADMIN_ID = "YOUR_ADMIN_ID"
 
-def start(update, context):
-    """
-    /start command handler.
-    """
-    welcome_message = "Welcome to the Movie Bot! Use /help to see the available commands."
-    send_message(update.message.chat_id, welcome_message)
+# Set up webhook route for Telegram updates
+@app.route('/webhook/' + BOT_TOKEN, methods=['POST'])
+def webhook():
+    if request.method == 'POST':
+        json_data = request.get_json()
+        chat_id = json_data['message']['chat']['id']
+        command = json_data['message']['text']
+        
+        # Allow /start for all users
+        if command == '/start':
+            send_message(chat_id, "Welcome to the Movie Bot!")
+        
+        # Only allow other commands for the admin
+        elif chat_id == int(ADMIN_ID):  # Check if the sender is the admin
+            if command == '/add_movie':
+                # Example command to add a movie
+                movie_data = {"title": "Movie Title", "description": "Movie Description"}
+                if add_movie(movie_data):
+                    send_message(chat_id, "Movie added successfully.")
+                else:
+                    send_message(chat_id, "Failed to add movie.")
+            
+            elif command == '/get_movie':
+                # Example command to get a movie
+                movie = get_movie("Movie Title")
+                if movie:
+                    send_message(chat_id, f"Movie found: {movie['title']} - {movie['description']}")
+                else:
+                    send_message(chat_id, "Movie not found.")
+            
+            elif command == '/update_movie':
+                # Example command to update a movie
+                updated_data = {"description": "Updated Movie Description"}
+                if update_movie("Movie Title", updated_data):
+                    send_message(chat_id, "Movie updated successfully.")
+                else:
+                    send_message(chat_id, "Failed to update movie.")
+            
+            elif command == '/delete_movie':
+                # Example command to delete a movie
+                if delete_movie("Movie Title"):
+                    send_message(chat_id, "Movie deleted successfully.")
+                else:
+                    send_message(chat_id, "Failed to delete movie.")
+            
+            # Add other admin-only commands here
+            else:
+                send_message(chat_id, "Unknown command.")
+        else:
+            send_message(chat_id, "You are not authorized to use this command.")
+        
+        return 'OK', 200
 
-def help(update, context):
-    """
-    /help command handler.
-    """
-    help_message = "Here are the available commands:\n/start - Start the bot\n/help - Show help"
-    send_message(update.message.chat_id, help_message)
+# Function to send message to a chat
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {'chat_id': chat_id, 'text': text}
+    response = requests.post(url, data=payload)
+    
+    return response.json()
 
-def forward_movie(update, context):
-    """
-    Handle forwarded movie files.
-    """
-    if update.message.document:
-        file_id = update.message.document.file_id
-        send_message(update.message.chat_id, "🎬 File received! What is the name of the movie?")
-        context.user_data['file_id'] = file_id
+# Set the webhook with Telegram API
+@app.route('/set_webhook', methods=['GET'])
+def set_webhook():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={WEBHOOK_URL}"
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        return "Webhook set successfully!"
     else:
-        send_message(update.message.chat_id, "⚠️ Please forward a movie file. 📥")
+        return f"Failed to set webhook: {response.text}", 400
 
-def save_movie_name(update, context):
-    """
-    Save the movie name.
-    """
-    if 'file_id' not in context.user_data:
-        send_message(update.message.chat_id, "⚠️ No file to associate with a movie name. Please forward the file first. 📥")
-        return
-    movie_name = update.message.text
-    file_id = context.user_data['file_id']
-    # Here you would save the movie data to the database or another storage.
-    send_message(update.message.chat_id, f"🎬 Movie '{movie_name}' saved successfully!")
-
-def get_movie_link(update, context):
-    """
-    Get the movie link.
-    """
-    movie_name = update.message.text
-    # Here you would retrieve the movie link from the database.
-    send_message(update.message.chat_id, f"Here is the link to the movie: <link_for_{movie_name}>")
+if __name__ == '__main__':
+    app.run(debug=True)
