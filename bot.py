@@ -34,7 +34,7 @@ def admin_only(func):
 def send_message(chat_id: str, text: str) -> requests.Response:
     url = f"{BASE_URL}/sendMessage"
     data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
-    
+
     try:
         response = requests.post(url, data=data)
         response.raise_for_status()
@@ -44,45 +44,30 @@ def send_message(chat_id: str, text: str) -> requests.Response:
         print(f"❌ Failed to send message: {e}")
     return response
 
-# Command Handlers
+# Handle forward movie and get name
 @admin_only
-def add_movie(update, context):
-    if len(context.args) < 2:
-        send_message(update.message.chat_id, "⚠️ Usage: /add_movie <movie_name> <file_id>")
+def forward_movie(update, context):
+    if update.message.document:
+        file_id = update.message.document.file_id
+        send_message(update.message.chat_id, "📥 File received! What is the name of the movie?")
+        context.user_data['file_id'] = file_id
+    else:
+        send_message(update.message.chat_id, "⚠️ Please forward a movie file.")
+
+# Save the movie with its name
+@admin_only
+def save_movie_name(update, context):
+    if 'file_id' not in context.user_data:
+        send_message(update.message.chat_id, "⚠️ No file to associate with a movie name. Please forward the file first.")
         return
 
-    movie_name = context.args[0]
-    file_id = context.args[1]
+    movie_name = update.message.text
+    file_id = context.user_data['file_id']
     save_movie(update.message.from_user.id, movie_name, file_id)
     log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"✅ Admin added a new movie: {movie_name} with file_id: {file_id}")
-    send_message(update.message.chat_id, f"✅ Movie '{movie_name}' has been added successfully.")
+    send_message(update.message.chat_id, f"✅ Movie '{movie_name}' has been added successfully with the file.")
 
-@admin_only
-def delete_movie(update, context):
-    if len(context.args) < 1:
-        send_message(update.message.chat_id, "⚠️ Usage: /delete_movie <movie_name>")
-        return
-
-    movie_name = context.args[0]
-    delete_movie(update.message.from_user.id, movie_name)
-    log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"✅ Admin deleted movie: {movie_name}")
-    send_message(update.message.chat_id, f"✅ Movie '{movie_name}' has been deleted successfully.")
-
-@admin_only
-def rename_movie(update, context):
-    if len(context.args) < 2:
-        send_message(update.message.chat_id, "⚠️ Usage: /rename_movie <old_name> <new_name>")
-        return
-
-    old_name = context.args[0]
-    new_name = context.args[1]
-
-    if rename_movie(update.message.from_user.id, old_name, new_name):
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_LIST_LOGS'), f"✅ Admin renamed movie: {old_name} to {new_name}")
-        send_message(update.message.chat_id, f"✅ Movie '{old_name}' has been renamed to '{new_name}'.")
-    else:
-        send_message(update.message.chat_id, f"⚠️ Movie '{old_name}' not found.")
-
+# Get the movie link
 @admin_only
 def get_movie_link(update, context):
     movie_name = " ".join(context.args)
@@ -95,3 +80,26 @@ def get_movie_link(update, context):
         send_message(update.message.chat_id, f"🎥 Click here to access the movie: {link}")
     else:
         send_message(update.message.chat_id, f"⚠️ Movie '{movie_name}' not found.")
+
+# Command Handlers
+def start(update, context):
+    update.message.reply_text("👋 Welcome! This is a file share bot.")
+
+def help(update, context):
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("❌ You are not authorized to use this command.")
+        return
+
+    update.message.reply_text("""
+    ℹ️ Available Commands:
+    /add_movie - Add a new movie.
+    /delete_movie - Delete a movie.
+    /rename_movie - Rename a movie.
+    /get_movie_link - Get a movie link.
+    """)
+
+# Add handlers to the dispatcher
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("help", help))
+dispatcher.add_handler(MessageHandler(Filters.document.mime_type("video/mp4") | Filters.document.mime_type("video/x-matroska"), forward_movie))
+dispatcher.add_handler(MessageHandler(Filters.text & Filters.regex(r'^.+$'), save_movie_name))
