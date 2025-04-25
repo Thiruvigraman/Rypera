@@ -3,11 +3,10 @@ import logging
 import atexit
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
-from telegram.ext import CommandHandler, MessageHandler, filters, Dispatcher
+from telegram.ext import CommandHandler, Dispatcher
 from dotenv import load_dotenv
 from db import load_movies, save_movie, delete_movie, rename_movie
 from discord_webhook import log_to_discord
-from telegram import ParseMode
 
 # Load environment variables
 load_dotenv()
@@ -31,11 +30,19 @@ def on_exit():
     log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now offline.")
 atexit.register(on_exit)
 
+# Admin check function
+def is_admin(user_id):
+    return user_id == int(os.getenv('ADMIN_ID'))
+
 # Command Handlers
 def start(update, context):
-    update.message.reply_text("Welcome! This is an files share bot.")
+    update.message.reply_text("Welcome! This is a files share bot.")
 
 def help(update, context):
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
+    
     update.message.reply_text("""
     Available Commands:
     /add_movie - Add a new movie.
@@ -45,65 +52,69 @@ def help(update, context):
     """)
 
 def add_movie(update, context):
-    chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-    if user_id == int(os.getenv('ADMIN_ID')):
-        if len(context.args) < 2:
-            update.message.reply_text("Usage: /add_movie <movie_name> <file_id>")
-            return
-        
-        movie_name = context.args[0]
-        file_id = context.args[1]
-        save_movie(movie_name, file_id)
-        
-        # Log the movie addition
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin added a new movie: {movie_name} with file_id: {file_id}")
-        update.message.reply_text(f"Movie '{movie_name}' has been added successfully.")
+    if len(context.args) < 2:
+        update.message.reply_text("Usage: /add_movie <movie_name> <file_id>")
+        return
+
+    movie_name = context.args[0]
+    file_id = context.args[1]
+    save_movie(movie_name, file_id)
+
+    # Log the movie addition
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin added a new movie: {movie_name} with file_id: {file_id}")
+    update.message.reply_text(f"Movie '{movie_name}' has been added successfully.")
 
 def delete_movie(update, context):
-    chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-    if user_id == int(os.getenv('ADMIN_ID')):
-        if len(context.args) < 1:
-            update.message.reply_text("Usage: /delete_movie <movie_name>")
-            return
-        
-        movie_name = context.args[0]
-        delete_movie(movie_name)
-        
-        # Log the movie deletion
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin deleted movie: {movie_name}")
-        update.message.reply_text(f"Movie '{movie_name}' has been deleted successfully.")
+    if len(context.args) < 1:
+        update.message.reply_text("Usage: /delete_movie <movie_name>")
+        return
+
+    movie_name = context.args[0]
+    delete_movie(movie_name)
+
+    # Log the movie deletion
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin deleted movie: {movie_name}")
+    update.message.reply_text(f"Movie '{movie_name}' has been deleted successfully.")
 
 def rename_movie(update, context):
-    chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-    if user_id == int(os.getenv('ADMIN_ID')):
-        if len(context.args) < 2:
-            update.message.reply_text("Usage: /rename_movie <old_name> <new_name>")
-            return
-        
-        old_name = context.args[0]
-        new_name = context.args[1]
-        
-        if rename_movie(old_name, new_name):
-            # Log movie renaming
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin renamed movie: {old_name} to {new_name}")
-            update.message.reply_text(f"Movie '{old_name}' has been renamed to '{new_name}'.")
-        else:
-            update.message.reply_text(f"Movie '{old_name}' not found.")
+    if len(context.args) < 2:
+        update.message.reply_text("Usage: /rename_movie <old_name> <new_name>")
+        return
+
+    old_name = context.args[0]
+    new_name = context.args[1]
+
+    if rename_movie(old_name, new_name):
+        # Log movie renaming
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin renamed movie: {old_name} to {new_name}")
+        update.message.reply_text(f"Movie '{old_name}' has been renamed to '{new_name}'.")
+    else:
+        update.message.reply_text(f"Movie '{old_name}' not found.")
 
 def get_movie_link(update, context):
+    if not is_admin(update.message.from_user.id):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
+
     movie_name = " ".join(context.args)
     movies = load_movies()
-    
+
     if movie_name in movies:
         file_id = movies[movie_name]['file_id']
         link = f"https://t.me/{bot.username}?start={file_id}"
-        
+
         # Log the link generation
         log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated movie link for: {movie_name}")
         update.message.reply_text(f"Click here to access the movie: {link}")
