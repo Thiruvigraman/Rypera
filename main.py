@@ -156,6 +156,10 @@ def handle_webhook():
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+ 
+@app.route('/')
+def home():
+    return "Telegram bot is running!"
 
 # Run the Flask app
 if __name__ == '__main__':
