@@ -27,16 +27,6 @@ app = Flask(__name__)
 TEMP_FILE_IDS = {}
 TEMP_WARNING_IDS = {}
 
-# MongoDB setup
-try:
-    mongo_client = MongoClient(MONGO_URI)
-    db = mongo_client['telegram_bot']
-    movies_collection = db['movies']
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "⚡ Connected to MongoDB!")
-except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ MongoDB connection failed:\n{e}")
-    sys.exit()
-
 # Function to log messages to Discord with an optional embed
 def log_to_discord(webhook_url, message, embed=None):
     try:
@@ -46,6 +36,16 @@ def log_to_discord(webhook_url, message, embed=None):
         requests.post(webhook_url, json=payload)
     except Exception as e:
         print(f"Discord logging failed: {e}")
+
+# MongoDB setup
+try:
+    mongo_client = MongoClient(MONGO_URI)
+    db = mongo_client['telegram_bot']
+    movies_collection = db['movies']
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "⚡ Connected to MongoDB!")
+except Exception as e:
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ MongoDB connection failed:\n{e}")
+    sys.exit()
 
 # Function to create embeds with a title, description, color, and timestamp in footer
 def create_embed(title, description, color=0x00ff00):
