@@ -23,6 +23,11 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 # Flask app
 app = Flask(__name__)
 
+#route to handle the root URL
+@app.route('/')
+def index():
+    return "Bot is running!"
+
 # Temp storage for uploaded files and warning messages
 TEMP_FILE_IDS = {}
 TEMP_WARNING_IDS = {}
