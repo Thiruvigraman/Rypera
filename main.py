@@ -1,13 +1,12 @@
 import os
 import requests
 from flask import Flask, request
-from dotenv import load_dotenv
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Environment Variables
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 MONGO_URI = os.getenv('MONGO_URI')
 DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
@@ -18,20 +17,19 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 
 # MongoDB setup
-client = MongoClient(MONGO_URI)
-db = client['movie_bot']
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client['telegram_bot']
 movies_collection = db['movies']
 
-# Flask app
+# Flask setup
 app = Flask(__name__)
 
-# Temporary storage for uploaded files
+# Temp storage for file uploads
 TEMP_FILE_IDS = {}
 
-# Helper functions
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
+    payload = {'chat_id': chat_id, 'text': text}
     requests.post(url, json=payload)
 
 def send_file(chat_id, file_id):
@@ -40,18 +38,13 @@ def send_file(chat_id, file_id):
     requests.post(url, json=payload)
 
 def log_to_discord(webhook_url, message):
-    payload = {"content": message}
     try:
-        requests.post(webhook_url, json=payload)
+        requests.post(webhook_url, json={'content': message})
     except Exception as e:
         print(f"Failed to log to Discord: {e}")
 
 def save_movie(name, file_id):
-    movies_collection.update_one(
-        {'name': name},
-        {'$set': {'name': name, 'file_id': file_id}},
-        upsert=True
-    )
+    movies_collection.update_one({'name': name}, {'$set': {'file_id': file_id}}, upsert=True)
 
 def load_movies():
     movies = {}
@@ -62,25 +55,36 @@ def load_movies():
 def rename_movie(old_name, new_name):
     movie = movies_collection.find_one({'name': old_name})
     if movie:
-        movies_collection.delete_one({'name': old_name})
-        movie['name'] = new_name
-        movies_collection.insert_one(movie)
+        movies_collection.update_one({'name': old_name}, {'$set': {'name': new_name}})
         return True
     return False
 
 def delete_movie(name):
     movies_collection.delete_one({'name': name})
 
-# Main processing function
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+@app.route('/webhook/<token>', methods=['POST'])
+def webhook(token):
+    if token != BOT_TOKEN:
+        return "Unauthorized", 403
+    
+    update = request.get_json()
+    process_update(update)
+    return "OK", 200
+
 def process_update(update):
     if 'message' not in update:
         return
 
-    chat_id = update['message']['chat']['id']
-    user_id = update['message']['from']['id']
-    text = update['message'].get('text', '')
-    document = update['message'].get('document')
-    video = update['message'].get('video')
+    message = update['message']
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    text = message.get('text', '')
+    document = message.get('document')
+    video = message.get('video')
 
     # Admin uploading file
     if (document or video) and user_id == ADMIN_ID:
@@ -147,7 +151,7 @@ def process_update(update):
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-    # /publish command
+    # /publish
     if text.startswith('/publish') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=2)
         if len(parts) < 3:
@@ -195,29 +199,5 @@ def process_update(update):
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-# Flask routes
-@app.route('/', methods=['GET'])
-def home():
-    return 'Bot is Running!'
-
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook():
-    if request.method == 'POST':
-        update = request.get_json()
-        process_update(update)
-    return 'ok'
-
-# Set webhook when starting
-def set_webhook():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-    webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
-    payload = {'url': webhook_url}
-    response = requests.post(url, data=payload)
-    if response.status_code == 200:
-        print('Webhook set successfully!')
-    else:
-        print('Failed to set webhook:', response.text)
-
 if __name__ == '__main__':
-    set_webhook()
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host="0.0.0.0", port=5000)
