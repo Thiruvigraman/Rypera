@@ -5,6 +5,7 @@ import sys
 from flask import Flask, request
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +27,29 @@ TEMP_FILE_IDS = {}
 # Track users
 USERS = set()
 
+# Function to log messages to Discord with an optional embed
+def log_to_discord(webhook_url, message, embed=None):
+    try:
+        payload = {"content": message}
+        if embed:
+            payload["embeds"] = [embed]
+        requests.post(webhook_url, json=payload)
+    except Exception as e:
+        print(f"Discord logging failed: {e}")
+
+# Function to create embeds with a title, description, color, and timestamp in footer
+def create_embed(title, description, color=0x00ff00):
+    embed = {
+        "title": title,
+        "description": description,
+        "color": color,
+        "timestamp": datetime.utcnow().isoformat(),
+        "footer": {
+            "text": "Premium Bot"
+        }
+    }
+    return embed
+
 # MongoDB setup
 try:
     mongo_client = MongoClient(MONGO_URI)
@@ -35,12 +59,6 @@ try:
 except Exception as e:
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ MongoDB connection failed:\n{e}")
     sys.exit()
-
-def log_to_discord(webhook_url, message):
-    try:
-        requests.post(webhook_url, json={"content": message})
-    except Exception as e:
-        print(f"Discord logging failed: {e}")
 
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -109,7 +127,12 @@ def process_update(update):
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
         save_movie(text, TEMP_FILE_IDS[chat_id])
         send_message(chat_id, f"🎬 Movie '{text}' has been added.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"🎬 Movie added: **{text}**")
+        embed = create_embed(
+            title="🎬 Movie Added",
+            description=f"Movie **{text}** has been added successfully.",
+            color=0x2ecc71  # Green for success
+        )
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: **{text}**", embed)
         del TEMP_FILE_IDS[chat_id]
         return
 
@@ -129,7 +152,12 @@ def process_update(update):
             _, old_name, new_name = parts
             if rename_movie(old_name, new_name):
                 send_message(chat_id, f"✏️ Renamed '{old_name}' to '{new_name}'.")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"✏️ Renamed: **{old_name} ➔ {new_name}**")
+                embed = create_embed(
+                    title="✏️ Movie Renamed",
+                    description=f"Movie **{old_name}** has been renamed to **{new_name}**.",
+                    color=0xe67e22  # Orange for renaming
+                )
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie renamed: **{old_name}** ➔ **{new_name}**", embed)
             else:
                 send_message(chat_id, f"Movie '{old_name}' not found.")
         return
@@ -143,7 +171,12 @@ def process_update(update):
             file_name = parts[1]
             delete_movie(file_name)
             send_message(chat_id, f"🗑️ Deleted '{file_name}'.")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"🗑️ Deleted movie: **{file_name}**")
+            embed = create_embed(
+                title="❌ Movie Deleted",
+                description=f"Movie **{file_name}** has been deleted.",
+                color=0xe74c3c  # Red for deletion
+            )
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie deleted: **{file_name}**", embed)
         return
 
     # /get_movie_link
@@ -158,63 +191,14 @@ def process_update(update):
             safe_name = movie_name.replace(" ", "_")
             movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
             send_message(chat_id, f"🔗 [Click here to get the movie]({movie_link})")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"🔗 Generated link for: **{movie_name}**")
+            embed = create_embed(
+                title="🔗 Movie Link Generated",
+                description=f"Link for **{movie_name}** generated.",
+                color=0x3498db  # Blue for link generation
+            )
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: **{movie_name}**", embed)
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
-        return
-
-    # /publish
-    if text.startswith('/publish') and user_id == ADMIN_ID:
-        parts = text.split(maxsplit=2)
-        if len(parts) < 3:
-            send_message(chat_id, "Usage: /publish @ChannelUsername MovieName")
-            return
-        _, channel_username, movie_name = parts
-        movie_name = movie_name.strip()
-
-        if not channel_username.startswith('@'):
-            send_message(chat_id, "Channel username must start with @")
-            return
-
-        movies = load_movies()
-        if movie_name not in movies:
-            send_message(chat_id, f"Movie '{movie_name}' not found.")
-            return
-
-        file_id = movies[movie_name]['file_id']
-
-        send_document_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-        payload = {
-            'chat_id': channel_username,
-            'document': file_id,
-            'caption': f"{movie_name}",
-            'parse_mode': 'Markdown'
-        }
-        response = requests.post(send_document_url, json=payload)
-
-        if response.status_code == 200:
-            send_message(chat_id, f"✅ Movie '{movie_name}' published to {channel_username}")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"✅ Published **{movie_name}** to {channel_username}")
-        else:
-            send_message(chat_id, f"❌ Failed to publish. Bot may not be admin in {channel_username}.\n\nError: {response.text}")
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to publish: {response.text}")
-        return
-
-    # /announce - Send text message to all users
-    if text.startswith('/announce') and user_id == ADMIN_ID:
-        announce_text = text.replace('/announce', '', 1).strip()
-        if not announce_text:
-            send_message(chat_id, "Usage: /announce Your Message Here")
-            return
-        success, fail = 0, 0
-        for user in USERS:
-            try:
-                send_message(user, f"📢 Announcement:\n\n{announce_text}")
-                success += 1
-            except:
-                fail += 1
-        send_message(chat_id, f"✅ Announcement sent to {success} users. Failed to send to {fail} users.")
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"📢 Announcement sent: **{announce_text}**")
         return
 
     # User clicking movie link
@@ -223,7 +207,12 @@ def process_update(update):
         movies = load_movies()
         if movie_name in movies and 'file_id' in movies[movie_name]:
             send_file(chat_id, movies[movie_name]['file_id'])
-            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"📥 {user_id} accessed movie: **{movie_name}**")
+            embed = create_embed(
+                title="🎥 Movie Requested",
+                description=f"Movie **{movie_name}** has been successfully sent to you.",
+                color=0x9b59b6  # Purple for movie request
+            )
+            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Movie accessed: **{movie_name}**", embed)
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
