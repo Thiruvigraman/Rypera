@@ -127,7 +127,8 @@ def process_update(update):
         send_message(chat_id, "📢 The movie file will be deleted in 15 minutes. Forward it to save.")
         
         # Send the warning message
-        warning_message = send_message(chat_id, "⚠️ This file will be deleted in 15 minutes. Please forward it to save.")
+        warning_message = send_message(chat_id, "⚠️ This file will be deleted in 15 minutes.
+Please forward it to somewhere and start downloading⚠️.")
         TEMP_WARNING_IDS[chat_id] = warning_message['result']['message_id']
         
         # Delete the file and warning message after 15 minutes
