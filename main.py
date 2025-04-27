@@ -2,13 +2,11 @@ import os
 import requests
 import signal
 import sys
-import time
-import logging
 from flask import Flask, request
 from pymongo import MongoClient
 from dotenv import load_dotenv
-from datetime import datetime
-from functools import wraps
+from datetime import datetime, timedelta
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -25,18 +23,11 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 # Flask app
 app = Flask(__name__)
 
-# Temp storage for uploaded files
+# Temp storage for uploaded files and warning messages
 TEMP_FILE_IDS = {}
+TEMP_WARNING_IDS = {}
 # Track users
 USERS = set()
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Rate Limiting
-RATE_LIMIT = 1  # seconds between requests
-last_request_time = {}
 
 # Function to log messages to Discord with an optional embed
 def log_to_discord(webhook_url, message, embed=None):
@@ -46,7 +37,7 @@ def log_to_discord(webhook_url, message, embed=None):
             payload["embeds"] = [embed]
         requests.post(webhook_url, json=payload)
     except Exception as e:
-        logger.error(f"Discord logging failed: {e}")
+        print(f"Discord logging failed: {e}")
 
 # Function to create embeds with a title, description, color, and timestamp in footer
 def create_embed(title, description, color=0x00ff00):
@@ -74,12 +65,14 @@ except Exception as e:
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {'chat_id': chat_id, 'text': text}
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    return response.json()
 
 def send_file(chat_id, file_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     payload = {'chat_id': chat_id, 'document': file_id}
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    return response.json()
 
 def save_movie(name, file_id):
     movies_collection.update_one({'name': name}, {'$set': {'file_id': file_id}}, upsert=True)
@@ -99,31 +92,6 @@ def rename_movie(old_name, new_name):
 
 def delete_movie(name):
     movies_collection.delete_one({'name': name})
-
-# Rate limiting decorator
-def rate_limited(func):
-    @wraps(func)
-    def wrapped(*args, **kwargs):
-        chat_id = kwargs.get('chat_id')
-        if chat_id:
-            current_time = time.time()
-            if chat_id in last_request_time and current_time - last_request_time[chat_id] < RATE_LIMIT:
-                send_message(chat_id, "Please wait before sending another request.")
-                return
-            last_request_time[chat_id] = current_time
-        return func(*args, **kwargs)
-    return wrapped
-
-# Command validation for admin
-def admin_only(func):
-    @wraps(func)
-    def wrapped(*args, **kwargs):
-        chat_id = kwargs.get('chat_id')
-        if chat_id != ADMIN_ID:
-            send_message(chat_id, "You do not have permission to use this command.")
-            return
-        return func(*args, **kwargs)
-    return wrapped
 
 @app.route('/')
 def home():
@@ -156,6 +124,14 @@ def process_update(update):
     if (document or video) and user_id == ADMIN_ID:
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
+        send_message(chat_id, "📢 The movie file will be deleted in 15 minutes. Forward it to save.")
+        
+        # Send the warning message
+        warning_message = send_message(chat_id, "⚠️ This file will be deleted in 15 minutes. Please forward it to save.")
+        TEMP_WARNING_IDS[chat_id] = warning_message['result']['message_id']
+        
+        # Delete the file and warning message after 15 minutes
+        threading.Timer(900, delete_file_and_warning_after_time, [chat_id, file_id, TEMP_WARNING_IDS[chat_id]]).start()
         send_message(chat_id, "Send the name of this movie to store it:")
         return
 
@@ -170,6 +146,7 @@ def process_update(update):
         )
         log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: **{text}**", embed)
         del TEMP_FILE_IDS[chat_id]
+        del TEMP_WARNING_IDS[chat_id]
         return
 
     # /list_files
@@ -248,31 +225,38 @@ def process_update(update):
                 description=f"Movie **{movie_name}** has been successfully sent to you.",
                 color=0x9b59b6  # Purple for movie request
             )
-            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Movie accessed: **{movie_name}**", embed)
+            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Movie accessed: **{movie_name}** by User: {user_id}", embed)
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-    # /health command for admin only
-    if text == '/health' and user_id == ADMIN_ID:
-        health_msg = "✅ Bot is healthy!\n"
-        try:
-            # Check if MongoDB connection is still active
-            mongo_client.admin.command('ping')
-            health_msg += "⚡ MongoDB is connected.\n"
-        except Exception as e:
-            health_msg += f"❌ MongoDB connection failed: {e}\n"
-        send_message(chat_id, health_msg)
-        return
+def delete_file_and_warning_after_time(chat_id, file_id, warning_message_id):
+    # Delete the warning message first
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
+    payload = {'chat_id': chat_id, 'message_id': warning_message_id}
+    requests.post(url, json=payload)
+    
+    # Then delete the file (you can implement your file deletion here)
+    send_message(chat_id, "❌ The file has been deleted after 15 minutes.")
 
 # Handle graceful shutdown (send offline log)
 def shutdown_handler(signal, frame):
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "🔴 Bot went offline!")
+    embed = create_embed(
+        title="🔴 Bot Offline",
+        description="The bot has gone offline. Please check the server.",
+        color=0xe74c3c  # Red for offline
+    )
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "🔴 Bot went offline!", embed)
     sys.exit(0)
 
 signal.signal(signal.SIGINT, shutdown_handler)
 signal.signal(signal.SIGTERM, shutdown_handler)
 
 if __name__ == '__main__':
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "🟢 Bot is Online and Running!")
+    embed = create_embed(
+        title="🟢 Bot Online",
+        description="The bot is online and ready to use!",
+        color=0x2ecc71  # Green for online
+    )
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "🟢 Bot is Online and Running!", embed)
     app.run(host="0.0.0.0", port=5000)
