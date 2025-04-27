@@ -125,12 +125,11 @@ def process_update(update):
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "📢 The movie file will be deleted in 15 minutes. Forward it to save.")
-        
+
         # Send the warning message
-        warning_message = send_message(chat_id, "⚠️ This file will be deleted in 15 minutes.
-Please forward it to somewhere and start downloading⚠️.")
+        warning_message = send_message(chat_id, "⚠️ This file will be deleted in 15 minutes. Please forward it to somewhere and start downloading⚠️.")
         TEMP_WARNING_IDS[chat_id] = warning_message['result']['message_id']
-        
+
         # Delete the file and warning message after 15 minutes
         threading.Timer(900, delete_file_and_warning_after_time, [chat_id, file_id, TEMP_WARNING_IDS[chat_id]]).start()
         send_message(chat_id, "Send the name of this movie to store it:")
@@ -236,18 +235,26 @@ def delete_file_and_warning_after_time(chat_id, file_id, warning_message_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
     payload = {'chat_id': chat_id, 'message_id': warning_message_id}
     requests.post(url, json=payload)
-    
+
     # Then delete the file (you can implement your file deletion here)
     send_message(chat_id, "❌ The file has been deleted after 15 minutes.")
 
 # Handle graceful shutdown (send offline log)
 def shutdown_handler(signal, frame):
-    embed = create_embed(
-        title="🔴 Bot Offline",
-        description="The bot has gone offline. Please check the server.",
-        color=0xe74c3c  # Red for offline
-    )
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "🔴 Bot went offline!", embed)
+    try:
+        embed = create_embed(
+            title="🔴 Bot Offline",
+            description="The bot has gone offline. Please check the server.",
+            color=0xe74c3c  # Red for offline
+        )
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "🔴 Bot went offline!", embed)
+    except Exception as e:
+        embed = create_embed(
+            title="🔴 Bot Offline",
+            description=f"The bot went offline due to an error: {e}",
+            color=0xe74c3c  # Red for offline
+        )
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"🔴 Bot went offline due to error: {e}", embed)
     sys.exit(0)
 
 signal.signal(signal.SIGINT, shutdown_handler)
