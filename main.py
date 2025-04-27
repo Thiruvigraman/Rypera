@@ -69,13 +69,14 @@ def send_message(chat_id, text):
 
 # Function to save movie data in MongoDB
 def save_movie(name, file_id):
-    movies_collection.update_one({'name': name}, {'$set': {'file_id': file_id}}, upsert=True)
+    movie_link = f"/start {name}"  # Unique access link for the movie
+    movies_collection.update_one({'name': name}, {'$set': {'file_id': file_id, 'link': movie_link}}, upsert=True)
 
 # Function to load movie data from MongoDB
 def load_movies():
     movies = {}
     for doc in movies_collection.find():
-        movies[doc['name']] = {'file_id': doc['file_id']}
+        movies[doc['name']] = {'file_id': doc['file_id'], 'link': doc['link']}
     return movies
 
 # Handle file uploads and send warning message when file is sent to user
@@ -125,6 +126,32 @@ def process_update(update):
         del TEMP_FILE_IDS[chat_id]
         return
 
+    # /genfilelink command to generate a link for a movie
+    if text.startswith('/genfilelink '):
+        if user_id == ADMIN_ID:
+            # Get the movie name
+            _, movie_name = text.split(' ', 1)
+            movie = load_movies().get(movie_name)
+
+            if movie:
+                # Generate the access link for the movie
+                movie_link = f"/start {movie_name}"
+                save_movie(movie_name, movie['file_id'])  # Ensure movie data is updated
+
+                # Respond to admin with the generated link
+                send_message(chat_id, f"🎬 The file access link for movie '{movie_name}' is: {movie_link}")
+
+                # Log to Discord
+                embed = create_embed(
+                    title="🎬 Movie Link Generated",
+                    description=f"Access link for movie **{movie_name}**: {movie_link}",
+                    color=0x2ecc71  # Green for success
+                )
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for movie: **{movie_name}**", embed)
+            else:
+                send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
+        return
+
     # List movies command
     if text == '/list_files' and user_id == ADMIN_ID:
         movies = load_movies()
@@ -132,18 +159,86 @@ def process_update(update):
         send_message(chat_id, msg)
         return
 
-    # User clicking a link to get a movie
-    if text.startswith('/start '):
-        movie_name = text.split(' ')[1]
-        movie = load_movies().get(movie_name)
+    # /rename_file <old_name> <new_name> command for renaming movies
+    if text.startswith('/rename_file '):
+        if user_id == ADMIN_ID:
+            _, old_name, new_name = text.split(' ', 2)
+            movie = load_movies().get(old_name)
 
-        if movie:
-            file_id = movie['file_id']
-            # Send the movie file to the user
-            response = send_file_to_user(chat_id, file_id)
-            if response:
-                # Send warning message when file is actually sent to the user
-                send_warning_message(chat_id)
+            if movie:
+                # Rename movie in the database
+                save_movie(new_name, movie['file_id'])
+                movies_collection.delete_one({'name': old_name})
+                send_message(chat_id, f"🎬 Movie '{old_name}' has been renamed to '{new_name}'.")
+
+                # Log to Discord
+                embed = create_embed(
+                    title="🎬 Movie Renamed",
+                    description=f"Movie **{old_name}** has been renamed to **{new_name}**.",
+                    color=0x2ecc71  # Green for success
+                )
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie renamed: **{old_name}** → **{new_name}**", embed)
+            else:
+                send_message(chat_id, f"❌ Movie '{old_name}' not found.")
+        return
+
+    # /delete_file <movie_name> command for deleting movies
+    if text.startswith('/delete_file '):
+        if user_id == ADMIN_ID:
+            _, movie_name = text.split(' ', 1)
+            movie = load_movies().get(movie_name)
+
+            if movie:
+                # Delete movie from the database
+                movies_collection.delete_one({'name': movie_name})
+                send_message(chat_id, f"🎬 Movie '{movie_name}' has been deleted.")
+
+                # Log to Discord
+                embed = create_embed(
+                    title="🎬 Movie Deleted",
+                    description=f"Movie **{movie_name}** has been deleted.",
+                    color=0xe74c3c  # Red for delete
+                )
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie deleted: **{movie_name}**", embed)
+            else:
+                send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
+        return
+
+    # /commands command to show all available commands for admin
+    if text == '/commands' and user_id == ADMIN_ID:
+        commands = """
+        Available Admin Commands:
+        /list_files - List all stored files.
+        /genfilelink <movie_name> - Generate a file access link for a movie.
+        /rename_file <old_name> <new_name> - Rename a movie file.
+        /delete_file <movie_name> - Delete a movie file.
+        """
+        send_message(chat_id, commands)
+        return
+
+    # /health command to check if the bot is online
+    if text == '/health' and user_id == ADMIN_ID:
+        send_message(chat_id, "🟢 The bot is running smoothly!")
+        return
+
+    # /announce command to send an announcement to all users (only text and emojis)
+    if text.startswith('/announce '):
+        if user_id == ADMIN_ID:
+            # Check if the message is only text and emojis (no links or media)
+            announcement = text[10:]  # Get the message after "/announce "
+            if any(char.isdigit() or char.isalpha() for char in announcement):
+                send_message(chat_id, "❌ The announcement can only contain text and emojis. No links or media allowed.")
+                return
+
+            # Get all users from the database
+            users = db['users'].find()
+            for user in users:
+                try:
+                    send_message(user['chat_id'], announcement)
+                except Exception as e:
+                    print(f"Error sending announcement to {user['chat_id']}: {e}")
+
+            send_message(chat_id, "✅ Announcement sent to all users.")
             return
 
 # Function to send the file to the user
