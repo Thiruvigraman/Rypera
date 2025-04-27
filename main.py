@@ -2,10 +2,13 @@ import os
 import requests
 import signal
 import sys
+import time
+import logging
 from flask import Flask, request
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +30,14 @@ TEMP_FILE_IDS = {}
 # Track users
 USERS = set()
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Rate Limiting
+RATE_LIMIT = 1  # seconds between requests
+last_request_time = {}
+
 # Function to log messages to Discord with an optional embed
 def log_to_discord(webhook_url, message, embed=None):
     try:
@@ -35,7 +46,7 @@ def log_to_discord(webhook_url, message, embed=None):
             payload["embeds"] = [embed]
         requests.post(webhook_url, json=payload)
     except Exception as e:
-        print(f"Discord logging failed: {e}")
+        logger.error(f"Discord logging failed: {e}")
 
 # Function to create embeds with a title, description, color, and timestamp in footer
 def create_embed(title, description, color=0x00ff00):
@@ -88,6 +99,31 @@ def rename_movie(old_name, new_name):
 
 def delete_movie(name):
     movies_collection.delete_one({'name': name})
+
+# Rate limiting decorator
+def rate_limited(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        chat_id = kwargs.get('chat_id')
+        if chat_id:
+            current_time = time.time()
+            if chat_id in last_request_time and current_time - last_request_time[chat_id] < RATE_LIMIT:
+                send_message(chat_id, "Please wait before sending another request.")
+                return
+            last_request_time[chat_id] = current_time
+        return func(*args, **kwargs)
+    return wrapped
+
+# Command validation for admin
+def admin_only(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        chat_id = kwargs.get('chat_id')
+        if chat_id != ADMIN_ID:
+            send_message(chat_id, "You do not have permission to use this command.")
+            return
+        return func(*args, **kwargs)
+    return wrapped
 
 @app.route('/')
 def home():
@@ -215,6 +251,18 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Movie accessed: **{movie_name}**", embed)
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
+        return
+
+    # /health command for admin only
+    if text == '/health' and user_id == ADMIN_ID:
+        health_msg = "✅ Bot is healthy!\n"
+        try:
+            # Check if MongoDB connection is still active
+            mongo_client.admin.command('ping')
+            health_msg += "⚡ MongoDB is connected.\n"
+        except Exception as e:
+            health_msg += f"❌ MongoDB connection failed: {e}\n"
+        send_message(chat_id, health_msg)
         return
 
 # Handle graceful shutdown (send offline log)
