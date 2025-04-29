@@ -147,7 +147,7 @@ def process_update(update):
             doc["link"] = f"/start {new}"
             movies_collection.update_one({"name": old}, {"$set": doc})
             send_message(chat_id, f"Renamed '{old}' to '{new}'")
-        except ValueError:
+        except:
             send_message(chat_id, "Usage: /rename_movie <old> <new>")
         return
 
@@ -158,7 +158,7 @@ def process_update(update):
             res = movies_collection.delete_one({"name": name})
             msg = f"Deleted '{name}'" if res.deleted_count else f"Movie '{name}' not found."
             send_message(chat_id, msg)
-        except ValueError:
+        except:
             send_message(chat_id, "Usage: /delete_movie <name>")
         return
 
@@ -167,7 +167,7 @@ def process_update(update):
         try:
             movies_collection.estimated_document_count()
             send_message(chat_id, "✅ Bot is healthy.")
-        except Exception as e:
+        except:
             send_message(chat_id, "❌ MongoDB connection error.")
         return
 
@@ -181,12 +181,17 @@ def process_update(update):
                 log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"User {user_id} accessed '{movie_name}'")
             else:
                 send_message(chat_id, "Movie not found.")
-        except Exception as e:
+        except:
             send_message(chat_id, "Invalid request.")
     else:
         # Ignore all other messages from users
         if user_id != ADMIN_ID:
             send_message(chat_id, "Access denied.")
+
+# Root route for health check
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot is running", 200
 
 # Webhook endpoint
 @app.route('/webhook/<token>', methods=['POST'])
