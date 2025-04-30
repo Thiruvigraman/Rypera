@@ -5,6 +5,10 @@ import requests
 from pymongo import MongoClient
 from discord_webhook import log_to_discord, create_embed
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Load environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
@@ -12,7 +16,6 @@ MONGO_URI = os.getenv('MONGO_URI')
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 
-logger = logging.getLogger(__name__)
 TEMP_FILE_IDS = {}
 movies_collection = None
 
@@ -25,8 +28,8 @@ def connect_mongo():
         client.server_info()
         return db, movies_collection
     except Exception as e:
-        embed = create_embed("❌ MongoDB Connection Failed", str(e), color=0xe74c3c)
-        log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), "❌ MongoDB Connection Error", embed)
+        embed = create_embed("âŒ MongoDB Connection Failed", str(e), color=0xe74c3c)
+        log_to_discord(os.getenv('DISCORD_WEBHOOK_STATUS'), "âŒ MongoDB Connection Error", embed)
         sys.exit()
 
 def save_movie(name, file_id):
@@ -39,13 +42,19 @@ def save_movie(name, file_id):
 
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    response = requests.post(url, json={'chat_id': chat_id, 'text': text})
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, json={'chat_id': chat_id, 'text': text}, headers=headers)
     if response.status_code != 200:
         logger.error(f"Failed to send message: {response.text}")
 
 def send_file(chat_id, file_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-    requests.post(url, data={"chat_id": chat_id, "document": file_id})
+    try:
+        response = requests.post(url, data={"chat_id": chat_id, "document": file_id})
+        if response.status_code != 200:
+            logger.error(f"Failed to send file: {response.text}")
+    except Exception as e:
+        logger.error(f"Error sending file: {str(e)}")
 
 def process_update(update):
     if 'message' not in update:
@@ -58,7 +67,7 @@ def process_update(update):
     document = message.get('document')
     video = message.get('video')
 
-    if user_id != ADMIN_ID:
+    if user_id != ADMIN_ID and not text.startswith("/start "):
         return
 
     if document or video:
@@ -70,15 +79,15 @@ def process_update(update):
     if chat_id in TEMP_FILE_IDS and text:
         file_id = TEMP_FILE_IDS[chat_id]
         if save_movie(text, file_id):
-            send_message(chat_id, f"🎬 Movie '{text}' has been added.")
+            send_message(chat_id, f"ðŸŽ¬ Movie '{text}' has been added.")
             embed = create_embed(
-                title="🎬 Movie Added",
+                title="ðŸŽ¬ Movie Added",
                 description=f"Movie **{text}** has been added successfully.",
                 color=0x2ecc71
             )
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: **{text}**", embed)
         else:
-            send_message(chat_id, f"⚠️ Movie '{text}' already exists.")
+            send_message(chat_id, f"âš ï¸ Movie '{text}' already exists.")
         del TEMP_FILE_IDS[chat_id]
         return
 
@@ -96,11 +105,15 @@ def process_update(update):
             if not doc:
                 send_message(chat_id, f"Movie '{old}' not found.")
                 return
+            if movies_collection.find_one({"name": new}):
+                send_message(chat_id, f"Movie '{new}' already exists.")
+                return
             doc["name"] = new
             doc["link"] = f"/start {new}"
             movies_collection.update_one({"name": old}, {"$set": doc})
             send_message(chat_id, f"Renamed '{old}' to '{new}'")
-        except:
+        except Exception as e:
+            logger.error(str(e))
             send_message(chat_id, "Usage: /rename_movie <old> <new>")
         return
 
@@ -117,9 +130,9 @@ def process_update(update):
     if text == "/health":
         try:
             movies_collection.estimated_document_count()
-            send_message(chat_id, "✅ Bot is healthy.")
+            send_message(chat_id, "âœ… Bot is healthy.")
         except:
-            send_message(chat_id, "❌ MongoDB connection error.")
+            send_message(chat_id, "âŒ MongoDB connection error.")
         return
 
     if text.startswith("/start "):
