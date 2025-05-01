@@ -99,7 +99,7 @@ def handle_webhook():
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[handle_webhook] Empty payload received.", critical=True)
             return jsonify({"error": "Empty payload"}), 400
         process_update(update)
-        return jsonify(success=True)
+        return jsonify({"success": True}), 200
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}", critical=True)
         return jsonify({"error": str(e)}), 500
