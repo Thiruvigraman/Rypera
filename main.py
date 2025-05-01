@@ -46,8 +46,8 @@ def webhook():
 @app.route("/", methods=["GET"])
 def home():
     try:
-        # Verify MongoDB connection is alive
-        client = connect_db.client  # Access the client from database.py
+        # Verify MongoDB connection
+        from database import client
         client.server_info()  # Ping MongoDB
         return "Bot is running!", 200
     except Exception as e:
