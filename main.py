@@ -56,6 +56,7 @@ def keep_alive():
         sleep(300)  # 5 minutes
 
 def run_deletion_checker():
+    """Run deletion checker every 60 seconds."""
     global LAST_DELETION_CHECK
     while True:
         try:
@@ -63,10 +64,12 @@ def run_deletion_checker():
             ist = pytz.timezone('Asia/Kolkata')
             LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}", critical=True)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}\n{traceback.format_exc()}", critical=True)
+            sleep(10)  # Retry after 10 seconds
         sleep(60)
 
 def run_log_flusher():
+    """Flush log buffer every 5 minutes."""
     while True:
         try:
             flush_log_buffer()
