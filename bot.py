@@ -2,7 +2,8 @@
 import requests
 from typing import Dict, Any
 from config import BOT_TOKEN
-from utils import log_to_discord, DISCORD_WEBHOOK_STATUS
+from utils import log_to_discord
+from config import DISCORD_WEBHOOK_STATUS
 
 def send_message(chat_id: int, text: str) -> None:
     """Send a message to a Telegram chat."""
