@@ -1,13 +1,14 @@
 #commands.py
 from typing import Dict, Any, Optional
 from bot import send_message, send_message_with_inline_keyboard
-from config import ADMIN_ID, TEMP_FILE_IDS, BOT_USERNAME
-from database import save_movie, get_all_movies, update_movie_name, delete_movie, get_movie_by_name
+from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_STATUS
+from database import save_movie, get_all_movies, update_movie_name, delete_movie, get_movie_by_name, save_temp_file_id, get_temp_file_id, delete_temp_file_id
 from utils import log_to_discord, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 
 def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
     """Handle file uploads from admin."""
     if user_id != ADMIN_ID:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] Unauthorized access attempt by user {user_id}")
         return
     file_id = None
     file_size = None
@@ -21,18 +22,20 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         send_message(chat_id, "File too large. Max size is 50 MB.")
         return
     if file_id:
-        TEMP_FILE_IDS[chat_id] = file_id
+        save_temp_file_id(chat_id, file_id)
         send_message(chat_id, "Send the name of this movie to store it:")
     else:
         send_message(chat_id, "No valid file found in the message.")
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
     """Handle naming of uploaded movies."""
-    if user_id != ADMIN_ID or not text or chat_id not in TEMP_FILE_IDS:
+    if user_id != ADMIN_ID or not text:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_naming_movie] Invalid request by user {user_id} or missing text")
         return
-    file_id = TEMP_FILE_IDS.pop(chat_id, None)
+    file_id = get_temp_file_id(chat_id)
     if file_id:
         save_movie(file_id, text, chat_id)
+        delete_temp_file_id(chat_id)
         send_message(chat_id, f"Movie '{text}' stored successfully!")
     else:
         send_message(chat_id, "No file found to name. Please upload a file first.")
