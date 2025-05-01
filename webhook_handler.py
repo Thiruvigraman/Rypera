@@ -1,7 +1,7 @@
 #webhook_handler.py
 from flask import request, jsonify
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
-from telegram_bot import send_message, send_file
+from bot import send_message, send_file
 from database import load_movies, save_movie, delete_movie, rename_movie
 from utils import log_to_discord, is_spamming
 
