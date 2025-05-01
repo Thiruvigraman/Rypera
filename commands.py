@@ -1,15 +1,15 @@
-     #commands.py
+#commands.py
 from typing import Optional, Dict, Any
-from bot import send_message, send_file
+from bot import send_message, send_file, answer_callback_query
 from database import (
     load_movies, save_movie, delete_movie, rename_movie,
     get_all_users, track_user
 )
-from utils import log_to_discord
+from utils import log_to_discord, is_valid_movie_name
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 
 TEMP_FILE_IDS: Dict[int, str] = {}
-PENDING_ANNOUNCEMENTS: Dict[int, str] = {}  # Store pending announcements by chat_id
+PENDING_ANNOUNCEMENTS: Dict[int, str] = {}
 
 def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
     if user_id != ADMIN_ID:
@@ -19,7 +19,7 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         file_id = document['file_id']
     elif video and 'file_id' in video:
         file_id = video['file_id']
-    
+
     if file_id:
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
@@ -27,18 +27,47 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         send_message(chat_id, "No valid file found in the message.")
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
-    if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
-        save_movie(text, TEMP_FILE_IDS[chat_id])
-        send_message(chat_id, f"Movie '{text}' has been added.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}")
+    if user_id != ADMIN_ID or chat_id not in TEMP_FILE_IDS or not text:
+        if chat_id in TEMP_FILE_IDS:
+            del TEMP_FILE_IDS[chat_id]  # Clean up on invalid input
+        return
+    if not is_valid_movie_name(text):
+        send_message(chat_id, "Invalid movie name. Use alphanumeric characters, spaces, underscores, or hyphens.")
         del TEMP_FILE_IDS[chat_id]
+        return
+    save_movie(text, TEMP_FILE_IDS[chat_id])
+    send_message(chat_id, f"Movie '{text}' has been added.")
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}", critical=True)
+    del TEMP_FILE_IDS[chat_id]
 
 def handle_list_files(chat_id: int, user_id: int) -> None:
     if user_id != ADMIN_ID:
         return
     movies = load_movies()
-    msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
-    send_message(chat_id, msg)
+    if not movies:
+        send_message(chat_id, "No files stored.")
+        return
+
+    max_message_length = 4000
+    message = "Stored Files:\n"
+    current_length = len(message)
+    messages = []
+
+    for movie_name in sorted(movies.keys()):
+        line = f"- {movie_name}\n"
+        line_length = len(line)
+        if current_length + line_length > max_message_length:
+            messages.append(message)
+            message = "Stored Files (continued):\n"
+            current_length = len(message)
+        message += line
+        current_length += line_length
+
+    if message:
+        messages.append(message)
+
+    for msg in messages:
+        send_message(chat_id, msg)
 
 def handle_rename_file(chat_id: int, user_id: int, text: Optional[str]) -> None:
     if user_id != ADMIN_ID or not text or not text.startswith('/rename_file'):
@@ -48,9 +77,12 @@ def handle_rename_file(chat_id: int, user_id: int, text: Optional[str]) -> None:
         send_message(chat_id, "Usage: /rename_file OldName NewName")
         return
     _, old_name, new_name = parts
+    if not is_valid_movie_name(new_name):
+        send_message(chat_id, "Invalid new movie name. Use alphanumeric characters, spaces, underscores, or hyphens.")
+        return
     if rename_movie(old_name, new_name):
         send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'", critical=True)
     else:
         send_message(chat_id, f"Movie '{old_name}' not found.")
 
@@ -62,9 +94,11 @@ def handle_delete_file(chat_id: int, user_id: int, text: Optional[str]) -> None:
         send_message(chat_id, "Usage: /delete_file FileName")
         return
     file_name = parts[1]
-    delete_movie(file_name)
-    send_message(chat_id, f"Deleted '{file_name}'.")
-    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
+    if delete_movie(file_name):
+        send_message(chat_id, f"Deleted '{file_name}'.")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}", critical=True)
+    else:
+        send_message(chat_id, f"Movie '{file_name}' not found.")
 
 def handle_get_movie_link(chat_id: int, user_id: int, text: Optional[str]) -> None:
     if user_id != ADMIN_ID or not text or not text.startswith('/get_movie_link'):
@@ -79,19 +113,19 @@ def handle_get_movie_link(chat_id: int, user_id: int, text: Optional[str]) -> No
         safe_name = movie_name.replace(" ", "_")
         movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
         send_message(chat_id, f"Click here to get the movie: {movie_link}")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}", critical=True)
     else:
         send_message(chat_id, f"Movie '{movie_name}' not found.")
 
 def handle_start(chat_id: int, user_id: int, text: Optional[str]) -> None:
     if not text or not text.startswith('/start '):
         return
-    movie_name = text.replace('/start ', '').replace('_', ' ')
+    movie_name = text.replace('/start ', '').replace('_', ' ').strip().lower()
     movies = load_movies()
     movie = movies.get(movie_name)
     if movie and 'file_id' in movie:
         send_file(chat_id, movie['file_id'])
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}")
+        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}", critical=True)
     else:
         send_message(chat_id, f"Movie '{movie_name}' not found.")
 
@@ -103,13 +137,13 @@ def handle_help(chat_id: int, user_id: int) -> None:
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ This command is for admins only.")
         return
-    
+
     help_text = (
         "*Admin Commands Help:*\n\n"
         "Here are all available admin commands:\n\n"
         "📋 /list_files - List all stored movies.\n"
         "✏️ /rename_file OldName NewName - Rename a movie.\n"
-        "🗑️ /delete_file FileName - Delete a movie.\n"
+        "�oubted:\n"
         "🔗 /get_movie_link Movie Name - Generate a shareable link for a movie.\n"
         "📢 /announce Your Message - Send a message to all users (with preview).\n"
         "🩺 /health - Check bot and database status.\n"
@@ -133,10 +167,7 @@ def handle_announce(chat_id: int, user_id: int, text: Optional[str]) -> None:
         send_message(chat_id, "Usage: /announce Your message here")
         return
 
-    # Store the pending announcement
     PENDING_ANNOUNCEMENTS[chat_id] = message
-
-    # Create inline keyboard with Confirm and Cancel buttons
     reply_markup = {
         "inline_keyboard": [
             [
@@ -145,23 +176,21 @@ def handle_announce(chat_id: int, user_id: int, text: Optional[str]) -> None:
             ]
         ]
     }
-
-    # Send preview to admin
     preview_text = (
         f"*Announcement Preview:*\n\n"
         f"{message}\n\n"
         f"Press 'Confirm' to send to all users or 'Cancel' to discard."
     )
     send_message(chat_id, preview_text, parse_mode="Markdown", reply_markup=reply_markup)
-    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement preview sent to admin: {message}")
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement preview sent to admin: {message}", critical=True)
 
-def handle_announce_callback(chat_id: int, user_id: int, callback_data: str) -> None:
+def handle_announce_callback(chat_id: int, user_id: int, callback_data: str, callback_query: Dict[str, Any]) -> None:
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ This action is for admins only.")
         return
 
     action, target_chat_id = callback_data.split('_', 1)[0], int(callback_data.split('_')[-1])
-    
+
     if target_chat_id != chat_id:
         send_message(chat_id, "❌ Invalid action.")
         return
@@ -170,6 +199,7 @@ def handle_announce_callback(chat_id: int, user_id: int, callback_data: str) -> 
         send_message(chat_id, "❌ No pending announcement found.")
         return
 
+    answer_callback_query(callback_query['id'])
     message = PENDING_ANNOUNCEMENTS[chat_id]
 
     if action == "confirm":
@@ -183,10 +213,9 @@ def handle_announce_callback(chat_id: int, user_id: int, callback_data: str) -> 
             except Exception:
                 failed += 1
         send_message(chat_id, f"Announcement sent. Failed to deliver to {failed} user(s).")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {len(user_ids) - failed}/{len(user_ids)} users: {message}")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {len(user_ids) - failed}/{len(user_ids)} users: {message}", critical=True)
     elif action == "cancel":
         send_message(chat_id, "Announcement cancelled.")
-        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement cancelled by admin: {message}")
-    
-    # Clean up
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement cancelled by admin: {message}", critical=True)
+
     del PENDING_ANNOUNCEMENTS[chat_id]
