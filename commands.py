@@ -11,26 +11,27 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] Unauthorized access attempt by user {user_id}")
         return
     file_id = None
-    file_size = None
     if document and 'file_id' in document:
         file_id = document['file_id']
-        file_size = document.get('file_size', 0)
     elif video and 'file_id' in video:
         file_id = video['file_id']
-        file_size = video.get('file_size', 0)
-    if file_size and file_size > 50 * 1024 * 1024:  # 50 MB limit
-        send_message(chat_id, "File too large. Max size is 50 MB.")
-        return
     if file_id:
         save_temp_file_id(chat_id, file_id)
         send_message(chat_id, "Send the name of this movie to store it:")
     else:
-        send_message(chat_id, "No valid file found in the message.")
+        send_message(chat_id, "No valid file found. Ensure the file is a document or video and within Telegram's 50 MB limit.")
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
     """Handle naming of uploaded movies."""
     if user_id != ADMIN_ID or not text:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_naming_movie] Invalid request by user {user_id} or missing text")
+        return
+    text = text.strip()
+    if len(text) > 100:
+        send_message(chat_id, "Movie name too long. Keep it under 100 characters.")
+        return
+    if not text.isprintable():
+        send_message(chat_id, "Movie name contains invalid characters.")
         return
     file_id = get_temp_file_id(chat_id)
     if file_id:
@@ -63,6 +64,9 @@ def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
         send_message(chat_id, "Usage: /rename_file old_name new_name")
         return
     old_name, new_name = parts[1], parts[2]
+    if len(new_name) > 100 or not new_name.isprintable():
+        send_message(chat_id, "New movie name is invalid or too long.")
+        return
     if update_movie_name(old_name, new_name):
         send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
     else:
@@ -159,6 +163,9 @@ def handle_announce(chat_id: int, user_id: int, text: str) -> None:
         send_message(chat_id, "Usage: /announce message")
         return
     message = parts[1]
+    if len(f"announce_confirm_{message}") > 64:
+        send_message(chat_id, "Announcement message too long. Keep it under 50 characters.")
+        return
     keyboard = {
         "inline_keyboard": [
             [{"text": "Confirm", "callback_data": f"announce_confirm_{message}"}, {"text": "Cancel", "callback_data": "announce_cancel"}]
@@ -182,8 +189,8 @@ def handle_announce_callback(chat_id: int, user_id: int, callback_data: str, cal
         for user in users:
             user_id = user['user_id']
             try:
-                send_message(user_id, f"Announcement: {message}")
-                success_count += 1
+                if send_message(user_id, f"Announcement: {message}"):
+                    success_count += 1
             except Exception:
                 continue
         send_message(chat_id, f"Announcement sent to {success_count} users.")
