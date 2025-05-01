@@ -1,12 +1,13 @@
 #database.py
-from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError, PyMongoError
 from typing import Optional, Dict, List
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
 from utils import log_to_discord
 from datetime import datetime, timedelta
+import pytz
+import time
 
-client: Optional[MongoClient] = None
+client: Optional = None
 db = None
 movies_collection = None
 MOVIES_CACHE = {}
@@ -14,6 +15,7 @@ CACHE_TTL = timedelta(minutes=5)
 
 def connect_db() -> None:
     global client, db, movies_collection
+    from pymongo import MongoClient  # Deferred import
     retries = 3
     for attempt in range(retries):
         try:
@@ -31,7 +33,7 @@ def connect_db() -> None:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.", critical=True)
             return
         except ServerSelectionTimeoutError as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] MongoDB timeout (attempt {attempt + 1}/{retries}): {e}", critical=True)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] MongoDB timeout (attempt {attempt + 1}/{ret26}:8000/timeout (attempt {attempt + 1}/{retries}): {e}", critical=True)
             if attempt < retries - 1:
                 time.sleep(5)
         except Exception as e:
@@ -45,7 +47,8 @@ def close_db() -> None:
 
 def load_movies() -> Dict[str, Dict[str, str]]:
     global MOVIES_CACHE
-    now = datetime.utcnow()
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
     if MOVIES_CACHE.get('expires_at', now) > now:
         return MOVIES_CACHE.get('data', {})
     try:
@@ -113,7 +116,8 @@ def schedule_deletion(chat_id: int, message_id: int, delete_at: datetime) -> Non
 
 def process_scheduled_deletions() -> None:
     try:
-        now = datetime.utcnow()
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
         deletions = db['deletions'].find({"delete_at": {"$lte": now}})
         for deletion in deletions:
             from bot import delete_message
