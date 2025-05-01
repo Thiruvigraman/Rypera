@@ -47,7 +47,7 @@ def log_to_discord(webhook: str, message: str) -> None:
         ],
         "footer": {"text": "Telegram Bot  |Powered by rypera "},
         "thumbnail": {
-            "url": "https://i.imgur.com/8zX9j7Z.png"  # Optional: Add a cool bot logo or icon
+            "url": "https://i.postimg.cc/wTWBBVLM/Screenshot-20240404-094145-Chrome.jpg"  # Optional: Add a cool bot logo or icon
         }
     }
 
