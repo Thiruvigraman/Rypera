@@ -143,7 +143,7 @@ def handle_help(chat_id: int, user_id: int) -> None:
         "Here are all available admin commands:\n\n"
         "📋 /list_files - List all stored movies.\n"
         "✏️ /rename_file OldName NewName - Rename a movie.\n"
-        "�oubted:\n"
+        "🗑️ /delete_file FileName - Delete a movie.\n"
         "🔗 /get_movie_link Movie Name - Generate a shareable link for a movie.\n"
         "📢 /announce Your Message - Send a message to all users (with preview).\n"
         "🩺 /health - Check bot and database status.\n"
