@@ -17,7 +17,7 @@ from commands import (
 )
 from utils import log_to_discord, is_spamming
 from bot import send_message
-from database import track_user
+from database import track_user, get_temp_file_id
 import traceback
 
 def process_update(update: Dict[str, Any]) -> None:
@@ -58,8 +58,16 @@ def process_update(update: Dict[str, Any]) -> None:
             send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
             return
         track_user(user_id)
-        handle_admin_upload(chat_id, user_id, document, video)
-        handle_admin_naming_movie(chat_id, user_id, text)
+        
+        # Handle file uploads only if a document or video is present
+        if document or video:
+            handle_admin_upload(chat_id, user_id, document, video)
+        
+        # Handle movie naming only if text is provided and a temp file ID exists
+        if text and user_id == ADMIN_ID and get_temp_file_id(chat_id):
+            handle_admin_naming_movie(chat_id, user_id, text)
+        
+        # Handle commands
         if text:
             text = text.strip().lower()
             if text == '/list_files':
