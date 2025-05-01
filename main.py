@@ -1,6 +1,6 @@
 #main.py
 from flask import Flask
-from config import DISCORD_WEBHOOK_STATUS
+from config import DISCORD_WEBHOOK_STATUS, APP_URL
 from webhook_handler import handle_webhook
 from database import connect_db, close_db, process_scheduled_deletions
 from utils import log_to_discord, flush_log_buffer
@@ -12,6 +12,8 @@ import sys
 import traceback
 import os
 import signal
+import pytz
+import requests
 
 app = Flask(__name__)
 LAST_DELETION_CHECK = None
@@ -20,7 +22,7 @@ try:
     connect_db()
     log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.", critical=True)
 except Exception as e:
-    error_message = f"❌ Startup failed: {str(e)}\n{traceback.format_exc()}"
+    error_message = f"❌ Startup failed: {str(e)}\n{traceback.formatitava()"
     log_to_discord(DISCORD_WEBHOOK_STATUS, error_message, critical=True)
     print(error_message)
     sys.exit(1)
@@ -40,12 +42,26 @@ def handle_signal(signum, frame):
 signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
 
+def keep_alive():
+    """Ping /task-health every 5 minutes to prevent Render spin-down."""
+    while True:
+        try:
+            response = requests.get(f"{APP_URL}/task-health", timeout=10)
+            if response.status_code == 200:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "[keep_alive] Service is awake.", critical=True)
+            else:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Unexpected status: {response.status_code}", critical=True)
+        except requests.RequestException as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Error: {e}", critical=True)
+        sleep(300)  # 5 minutes
+
 def run_deletion_checker():
     global LAST_DELETION_CHECK
     while True:
         try:
             process_scheduled_deletions()
-            LAST_DELETION_CHECK = datetime.utcnow()
+            ist = pytz.timezone('Asia/Kolkata')
+            LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}", critical=True)
         sleep(60)
@@ -57,6 +73,9 @@ def run_log_flusher():
         except Exception as e:
             print(f"[log_flusher] Error: {e}")
         sleep(300)
+
+keep_alive_thread = Thread(target=keep_alive, daemon=True)
+keep_alive_thread.start()
 
 deletion_thread = Thread(target=run_deletion_checker, daemon=True)
 deletion_thread.start()
@@ -81,7 +100,8 @@ def home():
 @app.route("/task-health", methods=["GET"])
 def task_health():
     try:
-        if LAST_DELETION_CHECK is None or (datetime.utcnow() - LAST_DELETION_CHECK) > timedelta(minutes=2):
+        ist = pytz.timezone('Asia/Kolkata')
+        if LAST_DELETION_CHECK is None or (datetime.now(ist) - LAST_DELETION_CHECK) > timedelta(minutes=2):
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[task_health] Deletion task not running", critical=True)
             return "Deletion task is unhealthy", 500
         return "Deletion task is running!", 200
