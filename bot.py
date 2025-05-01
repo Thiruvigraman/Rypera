@@ -1,13 +1,29 @@
 #bot.py
 import requests
 from typing import Dict, Any
-from config import BOT_TOKEN
+from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
 from utils import log_to_discord
-from config import DISCORD_WEBHOOK_STATUS
+import time
+import threading
+
+# Rate limiting
+LAST_REQUEST_TIME = {}
+REQUEST_LOCK = threading.Lock()
+
+def rate_limit(chat_id: int, min_interval: float = 1.0) -> None:
+    """Ensure minimum interval between requests to the same chat."""
+    with REQUEST_LOCK:
+        now = time.time()
+        last_time = LAST_REQUEST_TIME.get(chat_id, 0)
+        elapsed = now - last_time
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        LAST_REQUEST_TIME[chat_id] = time.time()
 
 def send_message(chat_id: int, text: str) -> None:
     """Send a message to a Telegram chat."""
     try:
+        rate_limit(chat_id)
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
         response = requests.post(url, json=payload, timeout=10)
@@ -19,6 +35,7 @@ def send_message(chat_id: int, text: str) -> None:
 def send_message_with_inline_keyboard(chat_id: int, text: str, keyboard: Dict[str, Any]) -> None:
     """Send a message with an inline keyboard."""
     try:
+        rate_limit(chat_id)
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": chat_id,
