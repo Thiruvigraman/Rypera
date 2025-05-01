@@ -1,128 +1,119 @@
 #database.py
-from pymongo.errors import ServerSelectionTimeoutError, PyMongoError
-from typing import Optional, Dict, List
-from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
-from utils import log_to_discord
+from pymongo import MongoClient
+from typing import Dict, Any, List
+from config import MONGODB_URI
+from bot import send_message
+from utils import log_to_discord, DISCORD_WEBHOOK_STATUS
 from datetime import datetime, timedelta
 import pytz
-import time
 
-client: Optional = None
-db = None
-movies_collection = None
-MOVIES_CACHE = {}
-CACHE_TTL = timedelta(minutes=5)
+client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000, maxPoolSize=3)
+db = client['telegram_bot']
 
-def connect_db() -> None:
-    global client, db, movies_collection
-    from pymongo import MongoClient  # Deferred import
-    retries = 3
-    for attempt in range(retries):
-        try:
-            client = MongoClient(
-                MONGODB_URI,
-                serverSelectionTimeoutMS=5000,
-                maxPoolSize=5,
-                minPoolSize=1,
-                connectTimeoutMS=10000
-            )
-            client.admin.command('ping')
-            db = client['telegram_bot']
-            movies_collection = db['movies']
-            db['deletions'].create_index("delete_at")
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.", critical=True)
-            return
-        except ServerSelectionTimeoutError as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] MongoDB timeout (attempt {attempt + 1}/{ret26}:8000/timeout (attempt {attempt + 1}/{retries}): {e}", critical=True)
-            if attempt < retries - 1:
-                time.sleep(5)
-        except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Failed to connect to MongoDB: {e}", critical=True)
-            raise
-    raise Exception("Failed to connect to MongoDB after retries")
+def connect_db():
+    """Connect to MongoDB and create indexes."""
+    try:
+        client.admin.command('ping')
+        db['movies'].create_index("name", unique=True)
+        db['deletions'].create_index("delete_at")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.", critical=True)
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Failed: {str(e)}", critical=True)
+        raise
 
-def close_db() -> None:
-    if client:
+def close_db():
+    """Close MongoDB connection."""
+    try:
         client.close()
-
-def load_movies() -> Dict[str, Dict[str, str]]:
-    global MOVIES_CACHE
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
-    if MOVIES_CACHE.get('expires_at', now) > now:
-        return MOVIES_CACHE.get('data', {})
-    try:
-        data = {doc['name'].lower(): {"file_id": doc['file_id']} for doc in movies_collection.find()}
-        MOVIES_CACHE = {'data': data, 'expires_at': now + CACHE_TTL}
-        return data
-    except PyMongoError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[load_movies] DB error: {e}", critical=True)
-        return {}
-
-def save_movie(name: str, file_id: str) -> None:
-    normalized_name = name.strip().lower()
-    try:
-        movies_collection.update_one(
-            {"name": normalized_name},
-            {"$set": {"file_id": file_id}},
-            upsert=True
-        )
-    except PyMongoError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] DB error: {e}", critical=True)
-
-def delete_movie(name: str) -> bool:
-    try:
-        result = movies_collection.delete_one({"name": name.lower()})
-        return result.deleted_count > 0
-    except PyMongoError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] DB error: {e}", critical=True)
-        return False
-
-def rename_movie(old_name: str, new_name: str) -> bool:
-    try:
-        movie = movies_collection.find_one({"name": old_name.lower()})
-        if movie:
-            save_movie(new_name, movie['file_id'])
-            delete_movie(old_name)
-            return True
-        return False
-    except PyMongoError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_movie] DB error: {e}", critical=True)
-        return False
-
-def track_user(user_id: int) -> None:
-    try:
-        if not db['users'].find_one({"user_id": user_id}):
-            db['users'].insert_one({"user_id": user_id})
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "[close_db] MongoDB connection closed.", critical=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[track_user] Error: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[close_db] Error: {str(e)}", critical=True)
 
-def get_all_users() -> List[int]:
+def save_movie(file_id: str, name: str, chat_id: int) -> None:
+    """Save movie to database and schedule deletion."""
     try:
-        return [doc['user_id'] for doc in db['users'].find({}, {"_id": 0, "user_id": 1})]
+        ist = pytz.timezone('Asia/Kolkata')
+        delete_at = datetime.now(ist) + timedelta(minutes=30)
+        db['movies'].insert_one({"file_id": file_id, "name": name, "chat_id": chat_id})
+        db['deletions'].insert_one({"file_id": file_id, "chat_id": chat_id, "delete_at": delete_at})
+        send_message(chat_id, f"Movie '{name}' will be deleted at {delete_at.strftime('%Y-%m-%d %H:%M:%S %Z')}.")
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_all_users] Error: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Error: {str(e)}", critical=True)
+        send_message(chat_id, "Failed to save movie.")
+
+def get_all_movies() -> List[Dict[str, Any]]:
+    """Get all movies."""
+    try:
+        return list(db['movies'].find().sort("name"))
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_all_movies] Error: {str(e)}", critical=True)
         return []
 
-def schedule_deletion(chat_id: int, message_id: int, delete_at: datetime) -> None:
+def update_movie_name(old_name: str, new_name: str) -> bool:
+    """Update movie name."""
     try:
-        db['deletions'].insert_one({
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "delete_at": delete_at
-        })
+        result = db['movies'].update_one({"name": old_name}, {"$set": {"name": new_name}})
+        return result.modified_count > 0
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[schedule_deletion] Error: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[update_movie_name] Error: {str(e)}", critical=True)
+        return False
+
+def delete_movie(name: str) -> bool:
+    """Delete movie and its deletion schedule."""
+    try:
+        movie = db['movies'].find_one({"name": name})
+        if not movie:
+            return False
+        db['movies'].delete_one({"name": name})
+        db['deletions'].delete_one({"file_id": movie['file_id']})
+        return True
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Error: {str(e)}", critical=True)
+        return False
+
+def get_movie_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """Get movie by name."""
+    try:
+        return db['movies'].find_one({"name": name})
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Error: {str(e)}", critical=True)
+        return None
+
+def track_user(user_id: int) -> None:
+    """Track user in database."""
+    try:
+        db['users'].update_one(
+            {"user_id": user_id},
+            {"$set": {"last_seen": datetime.now(pytz.timezone('Asia/Kolkata'))}},
+            upsert=True
+        )
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[track_user] Error: {str(e)}", critical=True)
+
+def get_all_users() -> List[Dict[str, Any]]:
+    """Get all users."""
+    try:
+        return list(db['users'].find())
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_all_users] Error: {str(e)}", critical=True)
+        return []
 
 def process_scheduled_deletions() -> None:
+    """Process scheduled deletions."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
-        deletions = db['deletions'].find({"delete_at": {"$lte": now}})
+        deletions = db['deletions'].find({"delete_at": {"$lte": now}}).limit(100)
         for deletion in deletions:
-            from bot import delete_message
-            if delete_message(deletion['chat_id'], deletion['message_id']):
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted message {deletion['message_id']}", critical=True)
-            db['deletions'].delete_one({"_id": deletion['_id']})
+            try:
+                file_id = deletion['file_id']
+                chat_id = deletion['chat_id']
+                movie = db['movies'].find_one({"file_id": file_id})
+                if movie:
+                    db['movies'].delete_one({"file_id": file_id})
+                    send_message(chat_id, f"Movie '{movie['name']}' has been deleted as scheduled.")
+                db['deletions'].delete_one({"_id": deletion['_id']})
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error processing deletion: {str(e)}", critical=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error: {str(e)}", critical=True)
