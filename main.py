@@ -8,6 +8,7 @@ import atexit
 import sys
 import traceback
 import os
+import signal
 
 app = Flask(__name__)
 
@@ -21,11 +22,20 @@ except Exception as e:
     print(error_message)
     sys.exit(1)  # Exit if database connection fails
 
-# Handle clean exit
-@atexit.register
+# Handle clean exit and signals
 def on_exit():
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "⚠️ Bot is shutting down.")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"⚠️ Bot is shutting down. Reason: Process terminated (PID: {os.getpid()})")
     close_db()
+
+atexit.register(on_exit)
+
+# Handle SIGTERM and SIGINT for graceful shutdown
+def handle_signal(signum, frame):
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"⚠️ Bot received signal {signum}. Shutting down.")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
 
 # Telegram Webhook Route
 @app.route(f'/webhook/{BOT_TOKEN}', methods=['POST'])
@@ -35,7 +45,14 @@ def webhook():
 # Health Check Endpoint
 @app.route("/", methods=["GET"])
 def home():
-    return "Bot is running!", 200
+    try:
+        # Verify MongoDB connection is alive
+        client = connect_db.client  # Access the client from database.py
+        client.server_info()  # Ping MongoDB
+        return "Bot is running!", 200
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[health_check] Failed: {str(e)}")
+        return "Bot is unhealthy", 500
 
 # Run Flask app
 if __name__ == '__main__':
