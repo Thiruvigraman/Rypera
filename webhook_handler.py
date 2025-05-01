@@ -1,4 +1,5 @@
 # webhook_handler.py
+
 from flask import request, jsonify
 from typing import Dict, Any, Optional
 from commands import (
@@ -8,11 +9,15 @@ from commands import (
     handle_rename_file,
     handle_delete_file,
     handle_get_movie_link,
-    handle_start
+    handle_start,
+    handle_health,
+    handle_help,
+    handle_announce
 )
 from utils import log_to_discord, is_spamming
 from bot import send_message
 from config import DISCORD_WEBHOOK_STATUS
+from database import track_user
 
 def process_update(update: Dict[str, Any]) -> None:
     """Process Telegram update."""
@@ -41,10 +46,14 @@ def process_update(update: Dict[str, Any]) -> None:
         send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
         return
 
-    # Command Dispatch
+    # Track user for future announcements
+    track_user(user_id)
+
+    # Admin actions
     handle_admin_upload(chat_id, user_id, document, video)
     handle_admin_naming_movie(chat_id, user_id, text)
 
+    # Commands
     if text == '/list_files':
         handle_list_files(chat_id, user_id)
     elif text and text.startswith('/rename_file'):
@@ -55,6 +64,12 @@ def process_update(update: Dict[str, Any]) -> None:
         handle_get_movie_link(chat_id, user_id, text)
     elif text and text.startswith('/start '):
         handle_start(chat_id, user_id, text)
+    elif text == '/health':
+        handle_health(chat_id, user_id)
+    elif text == '/help':
+        handle_help(chat_id, user_id)
+    elif text and text.startswith('/announce '):
+        handle_announce(chat_id, user_id, text)
 
 def handle_webhook():
     """Flask webhook handler for Telegram bot."""
