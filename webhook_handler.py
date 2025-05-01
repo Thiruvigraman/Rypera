@@ -96,9 +96,21 @@ def handle_webhook():
     try:
         update = request.get_json(force=True)
         if not update:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[handle_webhook] Empty payload received.", critical=True)
             return jsonify({"error": "Empty payload"}), 400
         process_update(update)
         return jsonify(success=True)
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}", critical=True)
         return jsonify({"error": str(e)}), 500
+
+# Fallback route to catch incorrect webhook URLs
+@app.route("/webhook/<path:invalid_path>", methods=['POST'])
+def webhook_fallback(invalid_path):
+    """Handle incorrect webhook URLs gracefully."""
+    log_to_discord(
+        DISCORD_WEBHOOK_STATUS,
+        f"[webhook_fallback] Received request to invalid webhook path: /webhook/{invalid_path}",
+        critical=True
+    )
+    return jsonify({"error": "Invalid webhook URL. Please check the Telegram webhook configuration."}), 404
