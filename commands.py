@@ -1,4 +1,4 @@
-# commands.py
+     #commands.py
 from typing import Optional, Dict, Any
 from bot import send_message, send_file
 from database import (
@@ -9,14 +9,22 @@ from utils import log_to_discord
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 
 TEMP_FILE_IDS: Dict[int, str] = {}
+PENDING_ANNOUNCEMENTS: Dict[int, str] = {}  # Store pending announcements by chat_id
 
 def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
     if user_id != ADMIN_ID:
         return
-    file_id = document.get('file_id') if document else video.get('file_id') if video else None
+    file_id = None
+    if document and 'file_id' in document:
+        file_id = document['file_id']
+    elif video and 'file_id' in video:
+        file_id = video['file_id']
+    
     if file_id:
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
+    else:
+        send_message(chat_id, "No valid file found in the message.")
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
@@ -92,32 +100,93 @@ def handle_health(chat_id: int, user_id: int) -> None:
         send_message(chat_id, "✅ Bot is up and database is connected.")
 
 def handle_help(chat_id: int, user_id: int) -> None:
-    if user_id == ADMIN_ID:
-        help_text = (
-            "*Admin Commands Help:*\n\n"
-            "/list_files\n"
-            "/rename_file OldName NewName\n"
-            "/delete_file FileName\n"
-            "/get_movie_link Movie Name\n"
-            "/announce Your Message\n"
-            "/health – Bot status"
-        )
-        send_message(chat_id, help_text, parse_mode="Markdown")
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ This command is for admins only.")
+        return
+    
+    help_text = (
+        "*Admin Commands Help:*\n\n"
+        "Here are all available admin commands:\n\n"
+        "📋 /list_files - List all stored movies.\n"
+        "✏️ /rename_file OldName NewName - Rename a movie.\n"
+        "🗑️ /delete_file FileName - Delete a movie.\n"
+        "🔗 /get_movie_link Movie Name - Generate a shareable link for a movie.\n"
+        "📢 /announce Your Message - Send a message to all users (with preview).\n"
+        "🩺 /health - Check bot and database status.\n"
+        "❓ /help - Show this help message.\n\n"
+        "*Upload Process:*\n"
+        "- Send a video or document to upload.\n"
+        "- Reply with the movie name to store it."
+    )
+    send_message(chat_id, help_text, parse_mode="Markdown")
 
 def handle_announce(chat_id: int, user_id: int, text: Optional[str]) -> None:
-    if user_id != ADMIN_ID or not text or not text.startswith('/announce '):
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ This command is for admins only.")
         return
+    if not text or not text.startswith('/announce '):
+        send_message(chat_id, "Usage: /announce Your message here")
+        return
+
     message = text.replace('/announce ', '', 1).strip()
     if not message:
-        send_message(chat_id, "Usage: /announce Your message here.")
+        send_message(chat_id, "Usage: /announce Your message here")
         return
-    user_ids = get_all_users()
-    failed = 0
-    for uid in user_ids:
-        try:
-            res = send_message(uid, f"📢 *Announcement:*\n\n{message}", parse_mode="Markdown")
-            if not res.get('ok'):
+
+    # Store the pending announcement
+    PENDING_ANNOUNCEMENTS[chat_id] = message
+
+    # Create inline keyboard with Confirm and Cancel buttons
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {"text": "Confirm", "callback_data": f"announce_confirm_{chat_id}"},
+                {"text": "Cancel", "callback_data": f"announce_cancel_{chat_id}"}
+            ]
+        ]
+    }
+
+    # Send preview to admin
+    preview_text = (
+        f"*Announcement Preview:*\n\n"
+        f"{message}\n\n"
+        f"Press 'Confirm' to send to all users or 'Cancel' to discard."
+    )
+    send_message(chat_id, preview_text, parse_mode="Markdown", reply_markup=reply_markup)
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement preview sent to admin: {message}")
+
+def handle_announce_callback(chat_id: int, user_id: int, callback_data: str) -> None:
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ This action is for admins only.")
+        return
+
+    action, target_chat_id = callback_data.split('_', 1)[0], int(callback_data.split('_')[-1])
+    
+    if target_chat_id != chat_id:
+        send_message(chat_id, "❌ Invalid action.")
+        return
+
+    if chat_id not in PENDING_ANNOUNCEMENTS:
+        send_message(chat_id, "❌ No pending announcement found.")
+        return
+
+    message = PENDING_ANNOUNCEMENTS[chat_id]
+
+    if action == "confirm":
+        user_ids = get_all_users()
+        failed = 0
+        for uid in user_ids:
+            try:
+                res = send_message(uid, f"📢 *Announcement:*\n\n{message}", parse_mode="Markdown")
+                if not res.get('ok'):
+                    failed += 1
+            except Exception:
                 failed += 1
-        except Exception:
-            failed += 1
-    send_message(chat_id, f"Announcement sent. Failed to deliver to {failed} user(s).")
+        send_message(chat_id, f"Announcement sent. Failed to deliver to {failed} user(s).")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {len(user_ids) - failed}/{len(user_ids)} users: {message}")
+    elif action == "cancel":
+        send_message(chat_id, "Announcement cancelled.")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement cancelled by admin: {message}")
+    
+    # Clean up
+    del PENDING_ANNOUNCEMENTS[chat_id]
