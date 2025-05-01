@@ -34,6 +34,9 @@ def process_update(update: Dict[str, Any]) -> None:
                 return
 
             if callback_data.startswith('announce_'):
+                if not callback_data.startswith(('announce_confirm_', 'announce_cancel_')):
+                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Invalid callback_data: {callback_data}", critical=True)
+                    return
                 handle_announce_callback(chat_id, user_id, callback_data, callback_query)
             return
 
