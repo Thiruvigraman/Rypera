@@ -6,6 +6,8 @@ from database import connect_db, close_db
 from utils import log_to_discord
 import atexit
 import sys
+import traceback
+import os
 
 app = Flask(__name__)
 
@@ -14,7 +16,9 @@ try:
     connect_db()
     log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.")
 except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Startup failed: {e}")
+    error_message = f"❌ Startup failed: {str(e)}\n{traceback.format_exc()}"
+    log_to_discord(DISCORD_WEBHOOK_STATUS, error_message)
+    print(error_message)
     sys.exit(1)  # Exit if database connection fails
 
 # Handle clean exit
@@ -36,4 +40,5 @@ def home():
 # Run Flask app
 if __name__ == '__main__':
     import config  # Avoid circular import during logging
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.getenv('PORT', 8080))  # Use PORT env var or default to 8080
+    app.run(host='0.0.0.0', port=port)
