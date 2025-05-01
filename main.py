@@ -108,6 +108,8 @@ def webhook():
 @app.route("/webhook/<path:invalid_path>", methods=['POST'])
 def webhook_fallback(invalid_path):
     """Handle incorrect webhook URLs gracefully."""
+    if not invalid_path.startswith('webhook'):
+        return jsonify({"error": "Invalid endpoint"}), 404
     log_to_discord(
         DISCORD_WEBHOOK_STATUS,
         f"[webhook_fallback] Received request to invalid webhook path: /webhook/{invalid_path}",
