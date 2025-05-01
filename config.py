@@ -1,5 +1,4 @@
 #config.py
-
 import os
 from typing import Dict
 
@@ -32,3 +31,4 @@ DISCORD_WEBHOOK_STATUS = os.getenv("DISCORD_WEBHOOK_STATUS")
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv("DISCORD_WEBHOOK_LIST_LOGS")
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv("DISCORD_WEBHOOK_FILE_ACCESS")
 APP_URL = os.getenv("APP_URL", "https://rypera.onrender.com")
+DELETION_MINUTES = int(os.getenv("DELETION_MINUTES", 30))
