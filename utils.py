@@ -2,7 +2,7 @@
 import requests
 from typing import Optional
 from datetime import datetime, timedelta
-from config import MONGODB_URI
+from config import MONGODB_URI, ADMIN_ID
 import pytz
 import threading
 
@@ -46,14 +46,20 @@ def flush_log_buffer() -> None:
         except Exception as e:
             print(f"[flush_log_buffer] Error: {str(e)}")
 
-def is_spamming(user_id: int) -> bool:
+def is_spamming(user_id: int, admin_id: int = ADMIN_ID) -> bool:
     """Check if user is spamming."""
+    if user_id == admin_id:
+        return False
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     if user_id not in SPAM_TRACKER:
         SPAM_TRACKER[user_id] = []
-    SPAM_TRACKER[user_id] = [t for t in SPAM_TRACKER[user_id] if now - t < timedelta(seconds=10)]
-    if len(SPAM_TRACKER[user_id]) >= 5:
+    SPAM_TRACKER[user_id] = [t for t in SPAM_TRACKER[user_id] if now - t < timedelta(seconds=15)]
+    if len(SPAM_TRACKER[user_id]) >= 7:
         return True
     SPAM_TRACKER[user_id].append(now)
+    # Cleanup old users
+    for uid in list(SPAM_TRACKER.keys()):
+        if not SPAM_TRACKER[uid] or now - SPAM_TRACKER[uid][-1] > timedelta(minutes=60):
+            del SPAM_TRACKER[uid]
     return False
