@@ -2,7 +2,7 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from typing import Dict, Any, List, Optional
-from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, DELETION_MINUTES
+from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, DELETION_MINUTES, ADMIN_ID
 from utils import log_to_discord
 from bot import send_message
 from datetime import datetime, timedelta
@@ -38,13 +38,16 @@ def close_db():
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[close_db] Error: {str(e)}", critical=True)
 
 def save_movie(file_id: str, name: str, chat_id: int) -> None:
-    """Save movie to database and schedule deletion."""
+    """Save movie to database and schedule deletion for non-admin uploads."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
-        delete_at = datetime.now(ist) + timedelta(minutes=DELETION_MINUTES)
         db['movies'].insert_one({"file_id": file_id, "name": name.lower(), "chat_id": chat_id})
-        db['deletions'].insert_one({"file_id": file_id, "chat_id": chat_id, "delete_at": delete_at})
-        send_message(chat_id, f"Movie '{name}' will be deleted at {delete_at.strftime('%Y-%m-%d %H:%M:%S %Z')}.")
+        if chat_id != ADMIN_ID:  # Only schedule deletion for non-admin uploads
+            delete_at = datetime.now(ist) + timedelta(minutes=DELETION_MINUTES)
+            db['deletions'].insert_one({"file_id": file_id, "chat_id": chat_id, "delete_at": delete_at})
+            send_message(chat_id, f"Movie '{name}' will be deleted at {delete_at.strftime('%Y-%m-%d %H:%M:%S %Z')}.")
+        else:
+            send_message(chat_id, f"Movie '{name}' stored successfully (no deletion scheduled).")
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Error: {str(e)}", critical=True)
         send_message(chat_id, "Failed to save movie.")
