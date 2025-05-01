@@ -1,10 +1,11 @@
-# main.py
+#main.py
 from flask import Flask
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
 from webhook_handler import handle_webhook
 from database import connect_db, close_db
 from utils import log_to_discord
 import atexit
+import sys
 
 app = Flask(__name__)
 
@@ -14,6 +15,7 @@ try:
     log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.")
 except Exception as e:
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Startup failed: {e}")
+    sys.exit(1)  # Exit if database connection fails
 
 # Handle clean exit
 @atexit.register
