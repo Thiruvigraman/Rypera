@@ -1,4 +1,3 @@
-# bot.py
 import requests
 import threading
 from typing import Optional, Dict, Any
@@ -7,12 +6,14 @@ from utils import log_to_discord
 
 TELEGRAM_API_BASE = f'https://api.telegram.org/bot{BOT_TOKEN}'
 
-def send_message(chat_id: int, text: str, parse_mode: Optional[str] = None) -> Dict[str, Any]:
-    """Send a Telegram message to the given chat_id."""
+def send_message(chat_id: int, text: str, parse_mode: Optional[str] = None, reply_markup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Send a Telegram message to the given chat_id with optional reply markup."""
     url = f'{TELEGRAM_API_BASE}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
     if parse_mode:
         payload['parse_mode'] = parse_mode
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
 
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -46,20 +47,29 @@ def send_file(chat_id: int, file_id: str) -> None:
         warning_message_id = warning_response.get('result', {}).get('message_id')
 
         # Schedule deletion after 30 minutes (1800 seconds)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Scheduled deletion for message {file_message_id} in 30 minutes")
         threading.Timer(1800, delete_message, args=[chat_id, file_message_id]).start()
         if warning_message_id:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Scheduled deletion for warning message {warning_message_id} in 30 minutes")
             threading.Timer(1800, delete_message, args=[chat_id, warning_message_id]).start()
     else:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Telegram API error: {message_data}")
 
-def delete_message(chat_id: int, message_id: int) -> None:
-    """Delete a message from Telegram by message_id."""
+def delete_message(chat_id: int, message_id: int) -> bool:
+    """Delete a message from Telegram by message_id. Returns True if successful."""
+    if not chat_id or not message_id:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_message] Invalid chat_id or message_id")
+        return False
+
     url = f'{TELEGRAM_API_BASE}/deleteMessage'
     payload = {'chat_id': chat_id, 'message_id': message_id}
 
     try:
         response = requests.post(url, json=payload, timeout=10)
-        if not response.ok:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_message] Failed: {response.text}")
+        if response.ok:
+            return True
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_message] Failed: {response.text}")
+        return False
     except requests.RequestException as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_message] Exception: {e}")
+        return False
