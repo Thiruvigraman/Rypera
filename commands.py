@@ -19,7 +19,7 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         save_temp_file_id(chat_id, file_id)
         send_message(chat_id, "Send the name of this movie to store it:")
     else:
-        send_message(chat_id, "No valid file found. Ensure the file is a document or video and within Telegram's 50 MB limit.")
+        send_message(chat_id, "No valid file found.")
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
     """Handle naming of uploaded movies."""
@@ -44,7 +44,7 @@ def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -
 def handle_list_files(chat_id: int, user_id: int) -> None:
     """List all stored movies."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "You are not authorized to list files.")
+        send_message(chat_id, "You are not authorized .")
         return
     movies = get_all_movies()
     if not movies:
@@ -57,7 +57,7 @@ def handle_list_files(chat_id: int, user_id: int) -> None:
 def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
     """Rename a movie."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "You are not authorized to rename files.")
+        send_message(chat_id, "You are not authorized.")
         return
     parts = text.split(maxsplit=2)
     if len(parts) < 3:
@@ -75,7 +75,7 @@ def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
 def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
     """Delete a movie."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "You are not authorized to delete files.")
+        send_message(chat_id, "You are not authorized.")
         return
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
@@ -120,7 +120,7 @@ def handle_start(chat_id: int, user_id: int, text: str) -> None:
 def handle_health(chat_id: int, user_id: int) -> None:
     """Check bot health."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "You are not authorized to check health.")
+        send_message(chat_id, "You are not authorized.")
         return
     try:
         from database import client
@@ -133,10 +133,7 @@ def handle_help(chat_id: int, user_id: int) -> None:
     """Show help message."""
     if user_id != ADMIN_ID:
         response = (
-            f"Welcome to {BOT_USERNAME}!\n"
-            "Available commands:\n"
-            "/start [movie_name] - Get a movie link\n"
-            "/help - Show this help message"
+            f"Welcome to {BOT_USERNAME}!
         )
     else:
         response = (
@@ -149,14 +146,14 @@ def handle_help(chat_id: int, user_id: int) -> None:
             "/get_movie_link movie_name - Get movie file ID\n"
             "/health - Check bot health\n"
             "/announce message - Announce to all users\n"
-            "/help - Show this help message"
+            
         )
     send_message(chat_id, response)
 
 def handle_announce(chat_id: int, user_id: int, text: str) -> None:
     """Handle /announce command."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "You are not authorized to announce.")
+        send_message(chat_id, "You are not authorized.")
         return
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
