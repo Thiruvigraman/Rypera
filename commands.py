@@ -1,6 +1,6 @@
 # commands.py
 
-from telegram_bot import send_message, send_file
+from bot import send_message, send_file
 from database import load_movies, save_movie, delete_movie, rename_movie
 from utils import log_to_discord
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
