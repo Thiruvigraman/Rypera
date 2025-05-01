@@ -21,12 +21,12 @@ DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGO_URI')
 APP_URL = os.getenv('APP_URL')
 
-if not BOT_TOKEN or not ADMIN_ID or not BOT_USERNAME or not MONGODB_URI or not APP_URL:
+if not BOT_TOKEN or not ADMIN_ID or not BOT_USERNAME or not MONGODB_URI:
     raise ValueError("Missing environment variables")
 
 ADMIN_ID = int(ADMIN_ID)
 TEMP_FILE_IDS = {}
-USER_COOLDOWNS = {}
+USER_COOLDOWNS = {}  # Anti-spam dictionary
 
 # Webhook Logger
 def log_to_discord(webhook, message):
@@ -136,12 +136,14 @@ def process_update(update):
         send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
         return
 
+    # Admin uploading file
     if (document or video) and user_id == ADMIN_ID:
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
         return
 
+    # Admin naming movie
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
         save_movie(text, TEMP_FILE_IDS[chat_id])
         send_message(chat_id, f"Movie '{text}' has been added.")
@@ -149,12 +151,14 @@ def process_update(update):
         del TEMP_FILE_IDS[chat_id]
         return
 
+    # List files
     if text == '/list_files' and user_id == ADMIN_ID:
         movies = load_movies()
         msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
         send_message(chat_id, msg)
         return
 
+    # Rename file
     if text.startswith('/rename_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=2)
         if len(parts) < 3:
@@ -168,6 +172,7 @@ def process_update(update):
                 send_message(chat_id, f"Movie '{old_name}' not found.")
         return
 
+    # Delete file
     if text.startswith('/delete_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -179,6 +184,7 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
         return
 
+    # Generate movie link
     if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -195,6 +201,7 @@ def process_update(update):
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
+    # User clicking movie link
     if text.startswith('/start '):
         movie_name = text.replace('/start ', '').replace('_', ' ')
         movies = load_movies()
@@ -206,7 +213,7 @@ def process_update(update):
         return
 
 # Webhook Endpoint
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+@app.route(f'/webhook/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
     try:
         update = request.get_json()
@@ -221,17 +228,6 @@ def handle_webhook():
 def home():
     return "Bot is running!", 200
 
-# Set Webhook Function
-def set_webhook():
-    webhook_url = f"{APP_URL}/{BOT_TOKEN}"
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-    response = requests.post(url, json={"url": webhook_url})
-    if response.ok:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"✅ Webhook set: {webhook_url}")
-    else:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to set webhook: {response.text}")
-
 # Run
 if __name__ == '__main__':
-    set_webhook()
     app.run(host='0.0.0.0', port=8080)
