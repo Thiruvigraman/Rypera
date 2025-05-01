@@ -1,15 +1,10 @@
 #utils.py
-import os
 import requests
 from typing import Optional
 from datetime import datetime, timedelta
 from config import MONGODB_URI
 import pytz
 import threading
-
-DISCORD_WEBHOOK_STATUS = os.getenv("DISCORD_WEBHOOK_STATUS")
-DISCORD_WEBHOOK_LIST_LOGS = os.getenv("DISCORD_WEBHOOK_LIST_LOGS")
-DISCORD_WEBHOOK_FILE_ACCESS = os.getenv("DISCORD_WEBHOOK_FILE_ACCESS")
 
 LOG_BUFFER = []
 BUFFER_LOCK = threading.Lock()
@@ -28,15 +23,24 @@ def log_to_discord(webhook_url: str, message: str, critical: bool = False) -> No
         flush_log_buffer()
 
 def flush_log_buffer() -> None:
-    """Flush log buffer to Discord."""
+    """Flush log buffer to Discord in batches."""
     with BUFFER_LOCK:
         if not LOG_BUFFER:
             return
         messages = LOG_BUFFER[:]
         LOG_BUFFER.clear()
+    webhook_batches = {}
     for msg in messages:
+        webhook_url = msg["webhook_url"]
+        if webhook_url not in webhook_batches:
+            webhook_batches[webhook_url] = []
+        webhook_batches[webhook_url].append(msg["content"])
+    for webhook_url, contents in webhook_batches.items():
         try:
-            response = requests.post(msg["webhook_url"], json={"content": msg["content"]}, timeout=10)
+            batch_message = "\n".join(contents)
+            if len(batch_message) > 2000:
+                batch_message = batch_message[:1997] + "..."
+            response = requests.post(webhook_url, json={"content": batch_message}, timeout=10)
             if not response.ok:
                 print(f"[flush_log_buffer] Failed to send to Discord: {response.text}")
         except Exception as e:
