@@ -22,7 +22,6 @@ from database import track_user
 def process_update(update: Dict[str, Any]) -> None:
     """Process Telegram update."""
     try:
-        # Handle callback queries
         callback_query = update.get('callback_query')
         if callback_query:
             user = callback_query.get('from')
@@ -31,14 +30,13 @@ def process_update(update: Dict[str, Any]) -> None:
             callback_data = callback_query.get('data')
 
             if not chat_id or not user_id or not callback_data:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing callback query info.")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing callback query info.", critical=True)
                 return
 
             if callback_data.startswith('announce_'):
-                handle_announce_callback(chat_id, user_id, callback_data)
+                handle_announce_callback(chat_id, user_id, callback_data, callback_query)
             return
 
-        # Handle regular messages
         message = update.get('message')
         if not message:
             return
@@ -47,7 +45,7 @@ def process_update(update: Dict[str, Any]) -> None:
         user = message.get('from')
 
         if not chat or not user:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing chat or user info.")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing chat or user info.", critical=True)
             return
 
         chat_id = chat.get('id')
@@ -57,24 +55,19 @@ def process_update(update: Dict[str, Any]) -> None:
         video = message.get('video')
 
         if not isinstance(chat_id, int) or not isinstance(user_id, int):
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Invalid chat_id or user_id.")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Invalid chat_id or user_id.", critical=True)
             return
 
-        # Skip anti-spam check for admin
         if user_id != ADMIN_ID and is_spamming(user_id):
             send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
             return
 
-        # Track user for future announcements
         track_user(user_id)
-
-        # Admin actions
         handle_admin_upload(chat_id, user_id, document, video)
         handle_admin_naming_movie(chat_id, user_id, text)
 
-        # Commands
         if text:
-            text = text.strip().lower()  # Normalize text for robust matching
+            text = text.strip().lower()
             if text == '/list_files':
                 handle_list_files(chat_id, user_id)
             elif text.startswith('/rename_file'):
@@ -88,12 +81,12 @@ def process_update(update: Dict[str, Any]) -> None:
             elif text == '/health':
                 handle_health(chat_id, user_id)
             elif text == '/help':
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Handling /help command for user {user_id}")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Handling /help command for user {user_id}", critical=True)
                 handle_help(chat_id, user_id)
             elif text.startswith('/announce '):
                 handle_announce(chat_id, user_id, text)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Exception: {str(e)}\n{traceback.format_exc()}")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Exception: {str(e)}\n{traceback.format_exc()}", critical=True)
 
 def handle_webhook():
     """Flask webhook handler for Telegram bot."""
@@ -101,9 +94,8 @@ def handle_webhook():
         update = request.get_json(force=True)
         if not update:
             return jsonify({"error": "Empty payload"}), 400
-
         process_update(update)
         return jsonify(success=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}", critical=True)
         return jsonify({"error": str(e)}), 500
