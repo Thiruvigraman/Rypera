@@ -22,7 +22,7 @@ try:
     connect_db()
     log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.", critical=True)
 except Exception as e:
-    error_message = f"❌ Startup failed: {str(e)}\n{traceback.formatitava()"
+    error_message = f"❌ Startup failed: {str(e)}\n{traceback.format_exc()}"
     log_to_discord(DISCORD_WEBHOOK_STATUS, error_message, critical=True)
     print(error_message)
     sys.exit(1)
