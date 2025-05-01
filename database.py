@@ -33,7 +33,7 @@ def close_db() -> None:
 def load_movies() -> Dict[str, Dict[str, str]]:
     """Return all movies as a dict: {name: {file_id}}"""
     try:
-        return {doc['name']: {"file_id": doc['file_id']} for doc in movies_collection.find()]
+        return {doc['name']: {"file_id": doc['file_id']} for doc in movies_collection.find()}
     except PyMongoError as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[load_movies] DB error: {e}")
         return {}
