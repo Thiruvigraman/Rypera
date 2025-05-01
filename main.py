@@ -1,6 +1,6 @@
 #main.py
 from flask import Flask, jsonify
-from config import DISCORD_WEBHOOK_STATUS, APP_URL
+from config import DISCORD_WEBHOOK_STATUS, APP_URL, BOT_TOKEN
 from webhook_handler import handle_webhook
 from database import connect_db, close_db, process_scheduled_deletions
 from utils import log_to_discord, flush_log_buffer
@@ -18,9 +18,24 @@ import requests
 app = Flask(__name__)
 LAST_DELETION_CHECK = None
 
+def set_webhook():
+    """Set Telegram webhook."""
+    webhook_url = f"{APP_URL}/webhook"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    payload = {"url": webhook_url}
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.ok:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook set to {webhook_url}")
+        else:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to set webhook: {response.text}", critical=True)
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
+
 try:
     connect_db()
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.", critical=True)
+    set_webhook()
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "🚀 Bot is now online.")
 except Exception as e:
     error_message = f"❌ Startup failed: {str(e)}\n{traceback.format_exc()}"
     log_to_discord(DISCORD_WEBHOOK_STATUS, error_message, critical=True)
@@ -48,12 +63,12 @@ def keep_alive():
         try:
             response = requests.get(f"{APP_URL}/task-health", timeout=10)
             if response.status_code == 200:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, "[keep_alive] Service is awake.", critical=True)
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "[keep_alive] Service is awake.")
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Unexpected status: {response.status_code}", critical=True)
         except requests.RequestException as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Error: {e}", critical=True)
-        sleep(300)  # 5 minutes
+        sleep(300)
 
 def run_deletion_checker():
     """Run deletion checker every 60 seconds."""
@@ -65,7 +80,7 @@ def run_deletion_checker():
             LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}\n{traceback.format_exc()}", critical=True)
-            sleep(10)  # Retry after 10 seconds
+            sleep(10)
         sleep(60)
 
 def run_log_flusher():
@@ -117,10 +132,16 @@ def task_health():
         if LAST_DELETION_CHECK is None or (datetime.now(ist) - LAST_DELETION_CHECK) > timedelta(minutes=2):
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[task_health] Deletion task not running", critical=True)
             return "Deletion task is unhealthy", 500
-        return "Deletion task is running!", 200
+        from database import client
+        client.admin.command('ping')
+        response = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=5)
+        if not response.ok:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Telegram API error: {response.text}", critical=True)
+            return "Telegram API is unhealthy", 500
+        return "All services are running!", 200
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Failed: {e}", critical=True)
-        return "Deletion task is unhealthy", 500
+        return "Services are unhealthy", 500
 
 if __name__ == '__main__':
     import config
