@@ -15,7 +15,7 @@ APP_URL = os.getenv('APP_URL')
 
 required_vars = [
     'BOT_TOKEN', 'ADMIN_ID', 'BOT_USERNAME', 'MONGODB_URI',
-    'DISCORD_WEBHOOK_STATUS', 'DISCORD_WEBHOOK_LIST_LOGS', 'DISCORD_WEBHOOK_FILE_ACCESS'
+    'DISCORD_WEBHOOK_STATUS', 'DISCORD_WEBHOOK_LIST_LOGS', 'DISCORD_WEBHOOK_FILE_ACCESS', 'APP_URL'
 ]
 missing = [var for var in required_vars if not os.getenv(var)]
 if missing:
