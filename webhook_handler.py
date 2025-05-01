@@ -1,7 +1,7 @@
 #webhook_handler.py
-
 from flask import request, jsonify
 from typing import Dict, Any, Optional
+from config import ADMIN_ID, DISCORD_WEBHOOK_STATUS  # Added ADMIN_ID import
 from commands import (
     handle_admin_upload,
     handle_admin_naming_movie,
@@ -17,7 +17,6 @@ from commands import (
 )
 from utils import log_to_discord, is_spamming
 from bot import send_message
-from config import DISCORD_WEBHOOK_STATUS
 from database import track_user
 
 def process_update(update: Dict[str, Any]) -> None:
