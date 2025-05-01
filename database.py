@@ -1,9 +1,9 @@
 #database.py
 from pymongo import MongoClient
 from typing import Dict, Any, List
-from config import MONGODB_URI
+from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
+from utils import log_to_discord
 from bot import send_message
-from utils import log_to_discord, DISCORD_WEBHOOK_STATUS
 from datetime import datetime, timedelta
 import pytz
 
