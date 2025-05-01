@@ -4,6 +4,7 @@ from pymongo.errors import ServerSelectionTimeoutError, PyMongoError
 from typing import Optional, Dict, List
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
 from utils import log_to_discord
+import time
 
 client: Optional[MongoClient] = None
 db = None
@@ -11,18 +12,23 @@ movies_collection = None
 
 def connect_db() -> None:
     global client, db, movies_collection
-    try:
-        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        client.server_info()
-        db = client['telegram_bot']
-        movies_collection = db['movies']
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
-    except ServerSelectionTimeoutError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ MongoDB timeout: {e}")
-        raise
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to connect to MongoDB: {e}")
-        raise
+    retries = 3
+    for attempt in range(retries):
+        try:
+            client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+            client.server_info()  # Test connection
+            db = client['telegram_bot']
+            movies_collection = db['movies']
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
+            return
+        except ServerSelectionTimeoutError as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] MongoDB timeout (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(5)  # Wait before retrying
+        except Exception as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Failed to connect to MongoDB: {e}")
+            raise
+    raise Exception("Failed to connect to MongoDB after retries")
 
 def close_db() -> None:
     if client:
