@@ -1,6 +1,6 @@
 #database.py
 from pymongo import MongoClient
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
 from utils import log_to_discord
 from bot import send_message
