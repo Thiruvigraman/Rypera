@@ -4,6 +4,7 @@ import threading
 from typing import Optional, Dict, Any
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
 from utils import log_to_discord
+import pytz
 
 TELEGRAM_API_BASE = f'https://api.telegram.org/bot{BOT_TOKEN}'
 
@@ -60,7 +61,8 @@ def send_file(chat_id: int, file_id: str) -> None:
         warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
         warning_message_id = warning_response.get('result', {}).get('message_id')
 
-        delete_at = datetime.utcnow() + timedelta(minutes=30)
+        ist = pytz.timezone('Asia/Kolkata')
+        delete_at = datetime.now(ist) + timedelta(minutes=30)
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Scheduled deletion for message {file_message_id} at {delete_at}", critical=True)
         schedule_deletion(chat_id, file_message_id, delete_at)
         if warning_message_id:
