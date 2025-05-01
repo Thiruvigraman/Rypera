@@ -45,7 +45,7 @@ def log_to_discord(webhook: str, message: str) -> None:
             {"name": "Module", "value": module, "inline": True},
             {"name": "Timestamp", "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"), "inline": True}
         ],
-        "footer": {"text": "Telegram Bot by xAI | Powered by Grok"},
+        "footer": {"text": "Telegram Bot  |Powered by rypera "},
         "thumbnail": {
             "url": "https://i.imgur.com/8zX9j7Z.png"  # Optional: Add a cool bot logo or icon
         }
