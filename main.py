@@ -1,5 +1,5 @@
 #main.py
-from flask import Flask
+from flask import Flask, jsonify
 from config import DISCORD_WEBHOOK_STATUS, APP_URL
 from webhook_handler import handle_webhook
 from database import connect_db, close_db, process_scheduled_deletions
@@ -86,6 +86,16 @@ log_thread.start()
 @app.route("/webhook", methods=['POST'])
 def webhook():
     return handle_webhook()
+
+@app.route("/webhook/<path:invalid_path>", methods=['POST'])
+def webhook_fallback(invalid_path):
+    """Handle incorrect webhook URLs gracefully."""
+    log_to_discord(
+        DISCORD_WEBHOOK_STATUS,
+        f"[webhook_fallback] Received request to invalid webhook path: /webhook/{invalid_path}",
+        critical=True
+    )
+    return jsonify({"error": "Invalid webhook URL. Please check the Telegram webhook configuration."}), 404
 
 @app.route("/", methods=["GET"])
 def home():
