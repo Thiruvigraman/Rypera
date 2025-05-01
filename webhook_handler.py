@@ -18,6 +18,7 @@ from commands import (
 from utils import log_to_discord, is_spamming
 from bot import send_message
 from database import track_user
+import traceback
 
 def process_update(update: Dict[str, Any]) -> None:
     """Process Telegram update."""
@@ -53,7 +54,7 @@ def process_update(update: Dict[str, Any]) -> None:
         if not isinstance(chat_id, int) or not isinstance(user_id, int):
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Invalid chat_id or user_id.", critical=True)
             return
-        if user_id != ADMIN_ID and is_spamming(user_id):
+        if user_id != ADMIN_ID and is_spamming(user_id, ADMIN_ID):
             send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
             return
         track_user(user_id)
@@ -93,5 +94,5 @@ def handle_webhook():
         process_update(update)
         return jsonify({"success": True}), 200
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}\n{traceback.format_exc()}", critical=True)
         return jsonify({"error": str(e)}), 500
