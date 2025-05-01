@@ -13,7 +13,6 @@ DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGODB_URI')
 APP_URL = os.getenv('APP_URL')
 
-# Validate environment variables
 required_vars = [
     'BOT_TOKEN', 'ADMIN_ID', 'BOT_USERNAME', 'MONGODB_URI',
     'DISCORD_WEBHOOK_STATUS', 'DISCORD_WEBHOOK_LIST_LOGS', 'DISCORD_WEBHOOK_FILE_ACCESS'
@@ -24,5 +23,7 @@ if missing:
 
 try:
     ADMIN_ID = int(ADMIN_ID)
+    if ADMIN_ID <= 0:
+        raise ValueError("ADMIN_ID must be a positive integer")
 except ValueError:
     raise ValueError("ADMIN_ID must be a valid integer")
