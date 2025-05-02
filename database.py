@@ -1,4 +1,5 @@
 #database.py
+
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from typing import Dict, Any, List, Optional
@@ -21,6 +22,8 @@ def connect_db(max_retries=3, retry_delay=5):
             db['deletions'].create_index("delete_at")
             db['temp_file_ids'].create_index("chat_id", unique=True)
             log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
+            # Clean up overdue deletion records on startup
+            cleanup_overdue_deletions()
             return
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Attempt {attempt + 1} failed: {str(e)}", critical=True)
@@ -28,6 +31,20 @@ def connect_db(max_retries=3, retry_delay=5):
                 time.sleep(retry_delay)
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Failed after {max_retries} attempts.", critical=True)
     raise ConnectionFailure("Could not connect to MongoDB")
+
+def cleanup_overdue_deletions():
+    """Remove overdue deletion records on startup."""
+    try:
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+        result = db['deletions'].delete_many({"delete_at": {"$lte": now}})
+        deleted_count = result.deleted_count
+        if deleted_count > 0:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[cleanup_overdue_deletions] Removed {deleted_count} overdue deletion records.")
+        else:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[cleanup_overdue_deletions] No overdue deletion records found.")
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[cleanup_overdue_deletions] Error: {str(e)}", critical=True)
 
 def close_db():
     """Close MongoDB connection."""
@@ -141,7 +158,7 @@ def get_all_users() -> List[Dict[str, Any]]:
         return []
 
 def process_scheduled_deletions() -> None:
-    """Process scheduled deletions in a single batch."""
+    """Process scheduled deletions in a single batch with robust cleanup."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
@@ -151,18 +168,25 @@ def process_scheduled_deletions() -> None:
         processed_count = 0
 
         for deletion in deletions:
-            file_id = deletion['file_id']
-            chat_id = deletion['chat_id']
-            deletion_id = deletion['_id']
-            movie = db['movies'].find_one({"file_id": file_id})
+            file_id = deletion.get('file_id')
+            chat_id = deletion.get('chat_id')
+            deletion_id = deletion.get('_id')
             processed_count += 1
-            if movie:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Processing deletion: file_id={file_id}, chat_id={chat_id}, deletion_id={deletion_id}, delete_at={deletion.get('delete_at')}")
+
+            # Temporary failsafe: skip notifications for 'valiant one'
+            movie = db['movies'].find_one({"file_id": file_id})
+            if movie and movie['name'].lower() == 'valiant one':
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Skipping notification for 'valiant one' (file_id: {file_id}) as a temporary measure.")
+                movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
+            elif movie:
                 movie_name = movie['name']
                 movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
                 send_message(chat_id, f"Movie '{movie_name}' has been deleted as scheduled.")
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted movie '{movie_name}' (file_id: {file_id}) for chat {chat_id}.")
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] No movie found for file_id {file_id}, clearing deletion record.")
+
             deletion_ops.append({"delete_one": {"filter": {"_id": deletion_id}}})
 
         if movie_ops:
@@ -175,9 +199,21 @@ def process_scheduled_deletions() -> None:
         if deletion_ops:
             try:
                 db['deletions'].bulk_write(deletion_ops, ordered=False)
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records.")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records via bulk write.")
             except Exception as e:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to clear deletion records: {str(e)}", critical=True)
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Bulk write failed: {str(e)}. Attempting individual deletes.", critical=True)
+                # Fallback to individual deletes
+                for op in deletion_ops:
+                    try:
+                        db['deletions'].delete_one(op['delete_one']['filter'])
+                        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Individually deleted deletion record with _id: {op['delete_one']['filter']['_id']}.")
+                    except Exception as e:
+                        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to individually delete _id {op['delete_one']['filter']['_id']}: {str(e)}", critical=True)
+
+        # Verify deletions were removed
+        remaining = db['deletions'].count_documents({"delete_at": {"$lte": now}})
+        if remaining > 0:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Warning: {remaining} deletion records remain after processing.", critical=True)
 
         if processed_count == 0:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_scheduled_deletions] No deletions to process.")
