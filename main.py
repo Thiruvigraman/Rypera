@@ -65,7 +65,11 @@ def keep_alive():
             if response.status_code == 200:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, "[keep_alive] Service is awake.")
             else:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Unexpected status: {response.status_code}", critical=True)
+                log_to_discord(
+                    DISCORD_WEBHOOK_STATUS,
+                    f"[keep_alive] Unexpected status: {response.status_code}, Response: {response.text}",
+                    critical=True
+                )
         except requests.RequestException as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Error: {e}", critical=True)
         sleep(300)
@@ -75,12 +79,19 @@ def run_deletion_checker():
     global LAST_DELETION_CHECK
     while True:
         try:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Running")
             process_scheduled_deletions()
             ist = pytz.timezone('Asia/Kolkata')
             LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}\n{traceback.format_exc()}", critical=True)
-            sleep(10)
+            # Attempt to reconnect to MongoDB
+            try:
+                connect_db()
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Reconnected to MongoDB")
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Reconnect failed: {e}", critical=True)
+            sleep(10)  # Wait before retrying
         sleep(60)
 
 def run_log_flusher():
@@ -131,21 +142,35 @@ def home():
 def task_health():
     try:
         ist = pytz.timezone('Asia/Kolkata')
-        if LAST_DELETION_CHECK is None or (datetime.now(ist) - LAST_DELETION_CHECK) > timedelta(minutes=2):
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[task_health] Deletion task not running", critical=True)
+        now = datetime.now(ist)
+        if LAST_DELETION_CHECK is None or (now - LAST_DELETION_CHECK) > timedelta(minutes=3):
+            age = "None" if LAST_DELETION_CHECK is None else f"{(now - LAST_DELETION_CHECK).total_seconds()} seconds"
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Deletion task not running or stalled (last check: {age})", critical=True)
             return "Deletion task is unhealthy", 500
+        
         from database import client
-        client.admin.command('ping')
+        # Retry MongoDB ping up to 3 times
+        for attempt in range(3):
+            try:
+                client.admin.command('ping')
+                break
+            except Exception as e:
+                if attempt == 2:
+                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] MongoDB ping failed after 3 attempts: {str(e)}", critical=True)
+                    return "MongoDB is unhealthy", 500
+                sleep(1)
+        
         response = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=5)
         if not response.ok:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Telegram API error: {response.text}", critical=True)
             return "Telegram API is unhealthy", 500
+        
         return "All services are running!", 200
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Failed: {e}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Unexpected error: {str(e)}\n{traceback.format_exc()}", critical=True)
         return "Services are unhealthy", 500
 
 if __name__ == '__main__':
     import config
-    port = int(os.getenv('PORT', 10000))
+    port = int(os.getenv('PORT', 8443))  # Use Telegram-supported port
     app.run(host='0.0.0.0', port=port)
