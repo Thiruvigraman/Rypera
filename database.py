@@ -2,7 +2,7 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from typing import Dict, Any, List, Optional
-from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, DELETION_MINUTES, ADMIN_ID
+from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
 from utils import log_to_discord
 from bot import send_message
 from datetime import datetime, timedelta
@@ -53,18 +53,11 @@ def close_db():
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[close_db] Error: {str(e)}", critical=True)
 
 def save_movie(file_id: str, name: str, chat_id: int) -> None:
-    """Save movie to database; no deletion for admin uploads."""
+    """Save movie to database; no deletion scheduling (admin-only uploads)."""
     try:
-        ist = pytz.timezone('Asia/Kolkata')
         db['movies'].insert_one({"file_id": file_id, "name": name.lower(), "chat_id": chat_id})
-        if chat_id != ADMIN_ID:
-            delete_at = datetime.now(ist) + timedelta(minutes=DELETION_MINUTES)
-            db['deletions'].insert_one({"file_id": file_id, "chat_id": chat_id, "delete_at": delete_at})
-            send_message(chat_id, f"Movie '{name}' will be deleted at {delete_at.strftime('%Y-%m-%d %H:%M:%S %Z')}.")
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Scheduled deletion for movie '{name}' at {delete_at} for non-admin chat {chat_id}.")
-        else:
-            send_message(chat_id, f"Movie '{name}' stored successfully (no deletion scheduled).")
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Stored movie '{name}' for admin chat {chat_id} (no deletion).")
+        send_message(chat_id, f"Movie '{name}' stored successfully (no deletion scheduled).")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Stored movie '{name}' for admin chat {chat_id} (no deletion).")
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Error: {str(e)}", critical=True)
         send_message(chat_id, "Failed to save movie.")
@@ -156,7 +149,7 @@ def get_all_users() -> List[Dict[str, Any]]:
         return []
 
 def process_scheduled_deletions() -> None:
-    """Process scheduled deletions in a single batch with robust cleanup."""
+    """Process any existing scheduled deletions (legacy records)."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
@@ -172,12 +165,8 @@ def process_scheduled_deletions() -> None:
             processed_count += 1
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Processing deletion: file_id={file_id}, chat_id={chat_id}, deletion_id={deletion_id}, delete_at={deletion.get('delete_at')}")
 
-            # Temporary failsafe: skip notifications for 'valiant one'
             movie = db['movies'].find_one({"file_id": file_id})
-            if movie and movie['name'].lower() == 'valiant one':
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Skipping notification for 'valiant one' (file_id: {file_id}) as a temporary measure.")
-                movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
-            elif movie:
+            if movie:
                 movie_name = movie['name']
                 movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
                 send_message(chat_id, f"Movie '{movie_name}' has been deleted as scheduled.")
