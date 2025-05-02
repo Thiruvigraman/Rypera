@@ -1,4 +1,5 @@
 #webhook_handler.py
+
 from flask import request, jsonify
 from typing import Dict, Any, Optional
 from config import ADMIN_ID, DISCORD_WEBHOOK_STATUS
@@ -86,7 +87,7 @@ def process_update(update: Dict[str, Any]) -> None:
             elif text == '/help':
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Handling /help command for user {user_id}")
                 handle_help(chat_id, user_id)
-            elif text.startswith('/announce '):
+            elif text.startswith('/announce'):
                 handle_announce(chat_id, user_id, text)
     except KeyError as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] KeyError: Missing key {e}\nUpdate: {update}", critical=True)
