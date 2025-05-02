@@ -1,4 +1,4 @@
-#commamds.py
+#commands.py
 
 from typing import Dict, Any
 from bot import send_message, send_file
@@ -11,7 +11,7 @@ def start(message: Dict[str, Any]) -> None:
     chat_id = message['chat']['id']
     user_id = message['from']['id']
     command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
-    track_user(user_id)
+    track_user(message['from'])
 
     if is_spamming(user_id, ADMIN_ID):
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] User {user_id} is spamming /start")
@@ -48,7 +48,7 @@ def help_command(message: Dict[str, Any]) -> None:
     """Handle /help command, showing different responses for admins and users."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if is_spamming(user_id, ADMIN_ID):
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[help] User {user_id} is spamming /help")
@@ -84,7 +84,7 @@ def handle_admin_upload(message: Dict[str, Any]) -> None:
     """Handle movie file uploads from admin."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can upload files.")
@@ -105,7 +105,7 @@ def name_file(message: Dict[str, Any]) -> None:
     """Name the last uploaded file."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can name files.")
@@ -133,7 +133,7 @@ def list_files(message: Dict[str, Any]) -> None:
     """List all stored movies."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if is_spamming(user_id, ADMIN_ID):
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[list_files] User {user_id} is spamming /list_files")
@@ -153,7 +153,7 @@ def get_movie(message: Dict[str, Any]) -> None:
     """Retrieve a movie by name."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if is_spamming(user_id, ADMIN_ID):
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] User {user_id} is spamming /getmovie")
@@ -178,7 +178,7 @@ def rename_file(message: Dict[str, Any]) -> None:
     """Rename a movie."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can rename files.")
@@ -203,7 +203,7 @@ def delete_file(message: Dict[str, Any]) -> None:
     """Delete a movie."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can delete files.")
@@ -228,7 +228,7 @@ def announce(message: Dict[str, Any]) -> None:
     """Send an announcement to all users."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can send announcements.")
@@ -258,7 +258,7 @@ def health_check(message: Dict[str, Any]) -> None:
     """Check bot health (admin only)."""
     chat_id = message['chat']['id']
     user_id = message['from']['id']
-    track_user(user_id)
+    track_user(message['from'])
 
     if user_id != ADMIN_ID:
         send_message(chat_id, "❌ Only admins can check health.")
