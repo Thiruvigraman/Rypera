@@ -70,6 +70,7 @@ def process_update(update: Dict[str, Any]) -> None:
         # Handle commands
         if text:
             text = text.strip().lower()
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Processing command: {text} for user {user_id}")
             if text == '/list_files':
                 handle_list_files(chat_id, user_id)
             elif text.startswith('/rename_file'):
