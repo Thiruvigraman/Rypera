@@ -8,6 +8,7 @@ from bot import send_message
 from datetime import datetime, timedelta
 import pytz
 import time
+import traceback
 
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000, maxPoolSize=20, waitQueueTimeoutMS=5000)
 db = client['telegram_bot']
@@ -107,7 +108,7 @@ def save_temp_file_id(chat_id: int, file_id: str) -> None:
     try:
         db['temp_file_ids'].update_one(
             {"chat_id": chat_id},
-            {"$set": {"file_id": file_id, "created_at": datetime.now(pytz.timezone('Asia/Kolkata'))}},
+            {"$set": {"file_id": file_id, "created_at": datetime.now(pytz.timezone('Asia+Kolkata'))}},
             upsert=True
         )
     except Exception as e:
@@ -150,6 +151,7 @@ def get_all_users() -> List[Dict[str, Any]]:
 
 def process_scheduled_deletions() -> None:
     """Process any existing scheduled deletions (legacy records)."""
+    import traceback  # Explicit import to prevent NameError
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
