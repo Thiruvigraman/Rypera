@@ -17,43 +17,16 @@ except Exception as e:
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[database] MongoDB connection failed: {str(e)}", critical=True)
     raise
 
-def save_movie(file_id: str, name: str, chat_id: int) -> None:
-    """Save a movie to the database with deletion scheduling."""
-    try:
-        deletion_minutes = int(os.getenv("DELETION_MINUTES", 30))
-        deletion_time = datetime.now(pytz.UTC) + timedelta(minutes=deletion_minutes)
-        
-        client[DATABASE_NAME]["movies"].insert_one({
-            "file_id": file_id,
-            "name": name,
-            "chat_id": chat_id,
-            "created_at": datetime.now(pytz.UTC)
-        })
-        
-        client[DATABASE_NAME]["deletions"].insert_one({
-            "file_id": file_id,
-            "name": name,
-            "chat_id": chat_id,
-            "delete_at": deletion_time
-        })
-        
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[save_movie] Saved movie '{name}' with file_id {file_id} for chat {chat_id}")
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Error: {str(e)}", critical=True)
-
 def get_movie_by_name(name: str) -> Optional[Dict[str, Any]]:
     """Retrieve a movie by name with case-insensitive and flexible matching."""
     try:
-        # Normalize input: collapse multiple spaces, strip
         normalized_name = " ".join(name.split())
-        # Use regex for case-insensitive partial match
         movie = client[DATABASE_NAME]["movies"].find_one({
             "name": {"$regex": f"^{normalized_name}$", "$options": "i"}
         })
         if movie:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Found movie '{movie['name']}' for input '{name}'")
         else:
-            # Log all movie names for debugging
             all_movies = client[DATABASE_NAME]["movies"].find({}, {"name": 1})
             movie_names = [m["name"] for m in all_movies]
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Movie '{name}' not found. Available: {', '.join(movie_names)}")
@@ -75,12 +48,12 @@ def update_movie_name(old_name: str, new_name: str) -> bool:
     """Update a movie's name."""
     try:
         result = client[DATABASE_NAME]["movies"].update_one(
-            {"name": old_name},
+            {"name": {"$regex": f"^{old_name}$", "$options": "i"}},
             {"$set": {"name": new_name}}
         )
         if result.modified_count > 0:
             client[DATABASE_NAME]["deletions"].update_one(
-                {"name": old_name},
+                {"name": {"$regex": f"^{old_name}$", "$options": "i"}},
                 {"$set": {"name": new_name}}
             )
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[update_movie_name] Updated '{old_name}' to '{new_name}'")
@@ -93,10 +66,10 @@ def update_movie_name(old_name: str, new_name: str) -> bool:
 def delete_movie(name: str) -> bool:
     """Delete a movie and its deletion schedule."""
     try:
-        movie = client[DATABASE_NAME]["movies"].find_one({"name": name})
+        movie = client[DATABASE_NAME]["movies"].find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
         if movie:
-            client[DATABASE_NAME]["movies"].delete_one({"name": name})
-            client[DATABASE_NAME]["deletions"].delete_one({"name": name})
+            client[DATABASE_NAME]["movies"].delete_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+            client[DATABASE_NAME]["deletions"].delete_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Deleted movie '{name}'")
             return True
         return False
@@ -104,34 +77,40 @@ def delete_movie(name: str) -> bool:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Error: {str(e)}", critical=True)
         return False
 
-def save_temp_file_id(chat_id: int, file_id: str) -> None:
-    """Save a temporary file ID."""
+def schedule_message_deletion(chat_id: int, message_id: int, movie_name: str) -> None:
+    """Schedule a message for deletion in a user's chat."""
     try:
-        client[DATABASE_NAME]["temp_files"].update_one(
-            {"chat_id": chat_id},
-            {"$set": {"file_id": file_id, "created_at": datetime.now(pytz.UTC)}},
-            upsert=True
-        )
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[save_temp_file_id] Saved temp file_id {file_id} for chat {chat_id}")
+        deletion_time = datetime.now(pytz.UTC) + timedelta(minutes=30)
+        client[DATABASE_NAME]["message_deletions"].insert_one({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "movie_name": movie_name,
+            "delete_at": deletion_time
+        })
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[schedule_message_deletion] Scheduled deletion for message {message_id} in chat {chat_id} for '{movie_name}'")
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_temp_file_id] Error: {str(e)}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[schedule_message_deletion] Error: {str(e)}", critical=True)
 
-def get_temp_file_id(chat_id: int) -> Optional[str]:
-    """Retrieve a temporary file ID."""
+def process_scheduled_message_deletions() -> int:
+    """Process messages scheduled for deletion."""
     try:
-        temp_file = client[DATABASE_NAME]["temp_files"].find_one({"chat_id": chat_id})
-        return temp_file["file_id"] if temp_file else None
+        now = datetime.now(pytz.UTC)
+        deletions = client[DATABASE_NAME]["message_deletions"].find({"delete_at": {"$lte": now}})
+        deleted_count = 0
+        for deletion in deletions:
+            try:
+                delete_message(deletion["chat_id"], deletion["message_id"])
+                client[DATABASE_NAME]["message_deletions"].delete_one({"_id": deletion["_id"]})
+                deleted_count += 1
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_message_deletions] Deleted message {deletion['message_id']} in chat {deletion['chat_id']} for '{deletion['movie_name']}'")
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_message_deletions] Failed to delete message {deletion['message_id']} in chat {deletion['chat_id']}: {str(e)}", critical=True)
+        if deleted_count == 0:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_message_deletions] No message deletions to process.")
+        return deleted_count
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_temp_file_id] Error: {str(e)}", critical=True)
-        return None
-
-def delete_temp_file_id(chat_id: int) -> None:
-    """Delete a temporary file ID."""
-    try:
-        client[DATABASE_NAME]["temp_files"].delete_one({"chat_id": chat_id})
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[delete_temp_file_id] Deleted temp file for chat {chat_id}")
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_temp_file_id] Error: {str(e)}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_message_deletions] Error: {str(e)}", critical=True)
+        return 0
 
 def process_scheduled_deletions() -> tuple[int, int]:
     """Process movies scheduled for deletion."""
