@@ -25,15 +25,14 @@ def start(message: Dict[str, Any]) -> None:
         return
 
     if command_args:
-        # Preserve underscores in movie name
-        movie_name = command_args.strip()
+        movie_name = " ".join(command_args.split())  # Normalize spaces
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] Processing deep link for movie: '{movie_name}' (raw: '{command_args}')")
         movie = get_movie_by_name(movie_name)
         if movie:
             send_file(chat_id, movie['file_id'], f"Found movie: {movie['name']}")
             log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[start] Sent movie '{movie['name']}' to chat {chat_id}")
+ dancing
         else:
-            # Suggest similar movies
             movies = get_all_movies()
             similar = [m['name'] for m in movies if movie_name.lower() in m['name'].lower() or m['name'].lower() in movie_name.lower()]
             error_msg = f"❌ Movie '{escape_markdown_v2(movie_name)}' not found."
@@ -132,7 +131,7 @@ def name_file(message: Dict[str, Any]) -> None:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[name_file] No name provided for chat {chat_id}")
         return
 
-    movie_name = command_args.strip()
+    movie_name = " ".join(command_args.split())  # Normalize spaces
     save_movie(file_id, movie_name, chat_id)
     delete_temp_file_id(chat_id)
     log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[name_file] Named file {file_id} as '{movie_name}' for chat {chat_id}")
@@ -173,7 +172,7 @@ def get_movie(message: Dict[str, Any]) -> None:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] No name provided for chat {chat_id}")
         return
 
-    movie_name = command_args.strip()
+    movie_name = " ".join(command_args.split())  # Normalize spaces
     movie = get_movie_by_name(movie_name)
     if movie:
         send_file(chat_id, movie['file_id'], f"Found movie: {movie['name']}")
@@ -200,6 +199,8 @@ def rename_file(message: Dict[str, Any]) -> None:
         return
 
     old_name, new_name = command_args
+    old_name = " ".join(old_name.split())  # Normalize spaces
+    new_name = " ".join(new_name.split())  # Normalize spaces
     if update_movie_name(old_name, new_name):
         send_message(chat_id, f"Movie '{escape_markdown_v2(old_name)}' renamed to '{escape_markdown_v2(new_name)}'.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Renamed '{old_name}' to '{new_name}' for chat {chat_id}")
@@ -224,7 +225,7 @@ def delete_file(message: Dict[str, Any]) -> None:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] No name provided for chat {chat_id}")
         return
 
-    movie_name = command_args.strip()
+    movie_name = " ".join(command_args.split())  # Normalize spaces
     if delete_movie(movie_name):
         send_message(chat_id, f"Movie '{escape_markdown_v2(movie_name)}' deleted.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Deleted movie '{movie_name}' for chat {chat_id}")
