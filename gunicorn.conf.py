@@ -8,6 +8,6 @@ threads = 2
 timeout = 30
 max_requests = 100
 max_requests_jitter = 10
-loglevel = "info"  # Changed from default (debug) to info
+loglevel = "info"  # Changed from debug to info
 accesslog = "-"
 errorlog = "-"
