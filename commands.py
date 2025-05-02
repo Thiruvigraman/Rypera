@@ -1,4 +1,4 @@
-# commands.py
+#commands.py
 
 from typing import Dict, Any, Optional
 from bot import send_message, send_message_with_inline_keyboard
@@ -11,7 +11,8 @@ from utils import log_to_discord
 
 
 def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Handle file uploads from admin."""
+    if user_id != ADMIN_ID:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] Unauthorized access by {user_id}")
         return
 
@@ -29,7 +30,8 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
 
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
-    if int(user_id) != int(ADMIN_ID) or not text:
+    """Handle naming of uploaded movies."""
+    if user_id != ADMIN_ID or not text:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_naming_movie] Invalid request by {user_id}")
         return
 
@@ -51,7 +53,8 @@ def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -
 
 
 def handle_list_files(chat_id: int, user_id: int) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """List all stored movies."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized.")
         return
 
@@ -66,7 +69,8 @@ def handle_list_files(chat_id: int, user_id: int) -> None:
 
 
 def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Rename a movie."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized.")
         return
 
@@ -87,7 +91,8 @@ def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
 
 
 def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Delete a movie."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized.")
         return
 
@@ -104,6 +109,7 @@ def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
 
 
 def handle_get_movie_link(chat_id: int, user_id: int, text: str) -> None:
+    """Get movie file link."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         send_message(chat_id, "Usage: /get_movie_link movie_name")
@@ -120,9 +126,10 @@ def handle_get_movie_link(chat_id: int, user_id: int, text: str) -> None:
 
 
 def handle_start(chat_id: int, user_id: int, text: str) -> None:
+    """Handle /start command with optional movie name."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}!.")
+        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}! Use /help for commands.")
         return
 
     movie_name = parts[1]
@@ -136,7 +143,8 @@ def handle_start(chat_id: int, user_id: int, text: str) -> None:
 
 
 def handle_health(chat_id: int, user_id: int) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Check bot health."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized.")
         return
 
@@ -149,10 +157,15 @@ def handle_health(chat_id: int, user_id: int) -> None:
 
 
 def handle_help(chat_id: int, user_id: int) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Show help message."""
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_help] Processing /help for user {user_id}, ADMIN_ID: {ADMIN_ID}")
+    if user_id != ADMIN_ID:
         response = (
             f"🤖 Welcome to {BOT_USERNAME}!\n"
-            "Use links shared in the channel to access files."
+            "Available commands:\n"
+            "🔗 /start [movie_name] - Get a movie link\n"
+            "🔍 /get_movie_link movie_name - Get movie file ID\n"
+            "❓ /help - Show this help message"
         )
     else:
         response = (
@@ -164,13 +177,15 @@ def handle_help(chat_id: int, user_id: int) -> None:
             "🗑️ /delete_file movie_name - Delete a movie\n"
             "🔗 /get_movie_link movie_name - Get movie file ID\n"
             "❤️ /health - Check bot health\n"
-            "📢 /announce message - Announce to all users"
+            "📢 /announce message - Announce to all users\n"
+            "❓ /help - Show this help message"
         )
     send_message(chat_id, response)
 
 
 def handle_announce(chat_id: int, user_id: int, text: str) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Handle /announce command."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized.")
         return
 
@@ -196,7 +211,8 @@ def handle_announce(chat_id: int, user_id: int, text: str) -> None:
 
 
 def handle_announce_callback(chat_id: int, user_id: int, callback_data: str, callback_query: Dict[str, Any]) -> None:
-    if int(user_id) != int(ADMIN_ID):
+    """Handle announcement callback."""
+    if user_id != ADMIN_ID:
         send_message(chat_id, "❌ You are not authorized to confirm announcements.")
         return
 
