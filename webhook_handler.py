@@ -1,108 +1,71 @@
 #webhook_handler.py
 
 from flask import request, jsonify
-from typing import Dict, Any, Optional
-from config import ADMIN_ID, DISCORD_WEBHOOK_STATUS
-from commands import (
-    handle_admin_upload,
-    handle_admin_naming_movie,
-    handle_list_files,
-    handle_rename_file,
-    handle_delete_file,
-    handle_get_movie_link,
-    handle_start,
-    handle_health,
-    handle_help,
-    handle_announce,
-    handle_announce_callback
-)
-from utils import log_to_discord, is_spamming
-from bot import send_message
-from database import track_user, get_temp_file_id
-import traceback
+from typing import Dict, Any
+import json
+from commands import start, help_command, handle_admin_upload, name_file, list_files, get_movie, rename_file, delete_file, announce, health_check
+from config import ADMIN_ID, BOT_USERNAME
+from utils import log_to_discord, DISCORD_WEBHOOK_STATUS
 
 def process_update(update: Dict[str, Any]) -> None:
     """Process Telegram update."""
-    try:
-        callback_query = update.get('callback_query')
-        if callback_query:
-            user = callback_query.get('from')
-            chat_id = callback_query.get('message', {}).get('chat', {}).get('id')
-            user_id = user.get('id')
-            callback_data = callback_query.get('data')
-            if not chat_id or not user_id or not callback_data:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing callback query info.", critical=True)
-                return
-            if callback_data.startswith('announce_'):
-                if not callback_data.startswith(('announce_confirm_', 'announce_cancel_')):
-                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Invalid callback_data: {callback_data}", critical=True)
-                    return
-                handle_announce_callback(chat_id, user_id, callback_data, callback_query)
-            return
-        message = update.get('message')
-        if not message:
-            return
-        chat = message.get('chat')
-        user = message.get('from')
-        if not chat or not user:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Missing chat or user info.", critical=True)
-            return
-        chat_id = chat.get('id')
-        user_id = user.get('id')
-        text: Optional[str] = message.get('text')
-        document = message.get('document')
-        video = message.get('video')
-        if not isinstance(chat_id, int) or not isinstance(user_id, int):
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] Invalid chat_id or user_id.", critical=True)
-            return
-        if user_id != ADMIN_ID and is_spamming(user_id, ADMIN_ID):
-            send_message(chat_id, "You're doing that too much. Please wait a few seconds.")
-            return
-        track_user(user_id)
-        
-        # Handle file uploads only if a document or video is present
-        if document or video:
-            handle_admin_upload(chat_id, user_id, document, video)
-        
-        # Handle movie naming only if text is provided and a temp file ID exists
-        if text and user_id == ADMIN_ID and get_temp_file_id(chat_id):
-            handle_admin_naming_movie(chat_id, user_id, text)
-        
-        # Handle commands
-        if text:
-            text = text.strip().lower()
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Processing command: {text} for user {user_id}")
-            if text == '/list_files':
-                handle_list_files(chat_id, user_id)
-            elif text.startswith('/rename_file'):
-                handle_rename_file(chat_id, user_id, text)
-            elif text.startswith('/delete_file'):
-                handle_delete_file(chat_id, user_id, text)
-            elif text.startswith('/get_movie_link'):
-                handle_get_movie_link(chat_id, user_id, text)
-            elif text.startswith('/start'):
-                handle_start(chat_id, user_id, text)
-            elif text == '/health':
-                handle_health(chat_id, user_id)
-            elif text == '/help':
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Handling /help command for user {user_id}")
-                handle_help(chat_id, user_id)
-            elif text.startswith('/announce'):
-                handle_announce(chat_id, user_id, text)
-    except KeyError as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] KeyError: Missing key {e}\nUpdate: {update}", critical=True)
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Exception: {str(e)}\n{traceback.format_exc()}", critical=True)
+    if 'message' not in update:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_update] No message in update")
+        return
+
+    message = update['message']
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    text = message.get('text', '').strip()
+
+    if not text:
+        if 'document' in message or 'video' in message:
+            handle_admin_upload(message)
+        else:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Non-text message from chat {chat_id}")
+        return
+
+    # Preserve underscores in command and args
+    raw_text = text
+    command_parts = text.split(maxsplit=1)
+    command = command_parts[0].lower()
+    args = command_parts[1] if len(command_parts) > 1 else ''
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Processing command: {raw_text} for user {user_id}")
+
+    command_map = {
+        f'/{BOT_USERNAME.lower()}': start,
+        f'/start@{BOT_USERNAME.lower()}': start,
+        '/start': start,
+        '/help': help_command,
+        '/addfile': handle_admin_upload,
+        '/namefile': name_file,
+        '/list_files': list_files,
+        '/getmovie': get_movie,
+        '/rename_file': rename_file,
+        '/delete_file': delete_file,
+        '/announce': announce,
+        '/health': health_check
+    }
+
+    handler = command_map.get(command)
+    if handler:
+        handler(message)
+    else:
+        from bot import send_message
+        send_message(chat_id, "Unknown command. Use /help for available commands.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_update] Unknown command '{command}' from chat {chat_id}")
 
 def handle_webhook():
-    """Flask webhook handler for Telegram bot."""
+    """Handle incoming Telegram webhook requests."""
     try:
-        update = request.get_json(force=True)
+        update = request.get_json()
         if not update:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "[handle_webhook] Empty payload received.", critical=True)
-            return jsonify({"error": "Empty payload"}), 400
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[handle_webhook] Empty update received", critical=True)
+            return jsonify({"status": "ok"}), 200
+
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Received update: {json.dumps(update, indent=2)}", debug=True)
         process_update(update)
-        return jsonify({"success": True}), 200
+        return jsonify({"status": "ok"}), 200
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Exception: {e}\n{traceback.format_exc()}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_webhook] Error: {str(e)}", critical=True)
         return jsonify({"error": str(e)}), 500
