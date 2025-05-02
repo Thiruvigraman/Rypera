@@ -1,5 +1,4 @@
 #database.py
-
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from typing import Dict, Any, List, Optional
@@ -22,7 +21,6 @@ def connect_db(max_retries=3, retry_delay=5):
             db['deletions'].create_index("delete_at")
             db['temp_file_ids'].create_index("chat_id", unique=True)
             log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
-            # Clean up overdue deletion records on startup
             cleanup_overdue_deletions()
             return
         except Exception as e:
@@ -202,7 +200,6 @@ def process_scheduled_deletions() -> None:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records via bulk write.")
             except Exception as e:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Bulk write failed: {str(e)}. Attempting individual deletes.", critical=True)
-                # Fallback to individual deletes
                 for op in deletion_ops:
                     try:
                         db['deletions'].delete_one(op['delete_one']['filter'])
@@ -210,7 +207,6 @@ def process_scheduled_deletions() -> None:
                     except Exception as e:
                         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to individually delete _id {op['delete_one']['filter']['_id']}: {str(e)}", critical=True)
 
-        # Verify deletions were removed
         remaining = db['deletions'].count_documents({"delete_at": {"$lte": now}})
         if remaining > 0:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Warning: {remaining} deletion records remain after processing.", critical=True)
