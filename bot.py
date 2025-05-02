@@ -15,18 +15,19 @@ def send_message(chat_id: int, text: str) -> None:
     }
     for attempt in range(3):
         try:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_message] Attempt {attempt + 1} to chat {chat_id} with parse_mode={payload.get('parse_mode', 'None')}")
             response = requests.post(url, json=payload, timeout=10)
             if response.ok:
                 return
             error = response.json()
             log_to_discord(
                 DISCORD_WEBHOOK_STATUS,
-                f"[send_message] Failed to send message to chat {chat_id}: {error}, Text: {text}",
+                f"[send_message] Failed to send message to chat {chat_id}: {error}, Text: {text}, parse_mode={payload.get('parse_mode', 'None')}",
                 critical=True
             )
             # Fallback to plain text if MarkdownV2 parsing fails
-            if error.get('error_code') == 400 and "can't parse entities" in error.get('description', ''):
-                payload['parse_mode'] = None  # Disable parse_mode for plain text
+            if error.get('error_code') == 400 and ("can't parse entities" in error.get('description', '') or "unsupported parse_mode" in error.get('description', '')):
+                payload.pop('parse_mode', None)  # Remove parse_mode for plain text
                 response = requests.post(url, json=payload, timeout=10)
                 if response.ok:
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_message] Succeeded with plain text for chat {chat_id}")
@@ -54,18 +55,19 @@ def send_file(chat_id: int, file_id: str, caption: str) -> None:
     }
     for attempt in range(3):
         try:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Attempt {attempt + 1} to chat {chat_id} with parse_mode={payload.get('parse_mode', 'None')}")
             response = requests.post(url, json=payload, timeout=10)
             if response.ok:
                 return
             error = response.json()
             log_to_discord(
                 DISCORD_WEBHOOK_STATUS,
-                f"[send_file] Failed to send file {file_id} to chat {chat_id}: {error}, Caption: {caption}",
+                f"[send_file] Failed to send file {file_id} to chat {chat_id}: {error}, Caption: {caption}, parse_mode={payload.get('parse_mode', 'None')}",
                 critical=True
             )
             # Fallback to plain text if MarkdownV2 parsing fails
-            if error.get('error_code') == 400 and "can't parse entities" in error.get('description', ''):
-                payload['parse_mode'] = None
+            if error.get('error_code') == 400 and ("can't parse entities" in error.get('description', '') or "unsupported parse_mode" in error.get('description', '')):
+                payload.pop('parse_mode', None)
                 response = requests.post(url, json=payload, timeout=10)
                 if response.ok:
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[send_file] Succeeded with plain text for chat {chat_id}")
