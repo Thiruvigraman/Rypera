@@ -1,4 +1,5 @@
 #main.py
+
 from flask import Flask, jsonify
 from config import DISCORD_WEBHOOK_STATUS, APP_URL, BOT_TOKEN
 from webhook_handler import handle_webhook
@@ -30,7 +31,7 @@ def set_webhook():
         else:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to set webhook: {response.text}", critical=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
+        log_to    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
 
 try:
     connect_db()
@@ -85,13 +86,12 @@ def run_deletion_checker():
             LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Error: {e}\n{traceback.format_exc()}", critical=True)
-            # Attempt to reconnect to MongoDB
             try:
                 connect_db()
                 log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Reconnected to MongoDB")
             except Exception as e:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Reconnect failed: {e}", critical=True)
-            sleep(10)  # Wait before retrying
+            sleep(10)
         sleep(60)
 
 def run_log_flusher():
@@ -149,7 +149,6 @@ def task_health():
             return "Deletion task is unhealthy", 500
         
         from database import client
-        # Retry MongoDB ping up to 3 times
         for attempt in range(3):
             try:
                 client.admin.command('ping')
@@ -171,6 +170,10 @@ def task_health():
         return "Services are unhealthy", 500
 
 if __name__ == '__main__':
-    import config
-    port = int(os.getenv('PORT', 8443))  # Use Telegram-supported port
-    app.run(host='0.0.0.0', port=port)
+    try:
+        import config
+        port = int(os.getenv('PORT', 8443))
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[main] Startup error: {str(e)}\n{traceback.format_exc()}", critical=True)
+        raise
