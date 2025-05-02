@@ -51,7 +51,7 @@ DEFAULT_WEBHOOK_TYPE = {
 def log_to_discord(webhook_url: str, message: str, critical: bool = False, debug: bool = False) -> None:
     """Send log message to Discord webhook as a colorful embed."""
     LOG_BUFFER.append((webhook_url, message, critical, debug))
-    if len(LOG_BUFFER) >= 10:  # Flush when buffer reaches 10 entries
+    if critical or len(LOG_BUFFER) >= 20:  # Flush on critical logs or 20 entries
         flush_log_buffer()
 
 def flush_log_buffer() -> None:
