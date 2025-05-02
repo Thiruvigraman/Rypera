@@ -1,4 +1,5 @@
 #main.py
+
 import os
 import requests
 import threading
@@ -7,16 +8,14 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
-
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def home():
     return "Bot is running!", 200
 
-# ENV Variables
+# ENV variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = os.getenv('ADMIN_ID')
 BOT_USERNAME = os.getenv('BOT_USERNAME')
@@ -24,14 +23,15 @@ DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGODB_URI')
+WEBHOOK_BASE_URL = os.getenv('WEBHOOK_BASE_URL')
 
-if not BOT_TOKEN or not ADMIN_ID or not BOT_USERNAME or not MONGODB_URI:
-    raise ValueError("Missing environment variables")
+if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, WEBHOOK_BASE_URL]):
+    raise ValueError("Missing required environment variables.")
 
 ADMIN_ID = int(ADMIN_ID)
 TEMP_FILE_IDS = {}
 
-# Webhook Logger
+# Discord logger
 def log_to_discord(webhook, message):
     if webhook:
         try:
@@ -39,31 +39,27 @@ def log_to_discord(webhook, message):
         except:
             pass
 
-# MongoDB Setup
+# MongoDB setup
 try:
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-    client.server_info()  # Force connection to test
+    client.server_info()
     db = client['telegram_bot']
     movies_collection = db['movies']
     log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
 except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to connect to MongoDB: {e}")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ MongoDB connection failed: {e}")
     raise e
 
-# On startup
+# On startup and exit
 log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now online!")
 
-# On exit
 def on_exit():
     log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now offline.")
 atexit.register(on_exit)
 
-# MongoDB Actions
+# MongoDB functions
 def load_movies():
-    movies = {}
-    for doc in movies_collection.find():
-        movies[doc['name']] = {"file_id": doc['file_id']}
-    return movies
+    return {doc['name']: {"file_id": doc['file_id']} for doc in movies_collection.find()}
 
 def save_movie(name, file_id):
     movies_collection.update_one({"name": name}, {"$set": {"file_id": file_id}}, upsert=True)
@@ -79,7 +75,7 @@ def rename_movie(old_name, new_name):
         return True
     return False
 
-# Telegram Actions
+# Telegram actions
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
@@ -113,25 +109,26 @@ def delete_message(chat_id, message_id):
     payload = {'chat_id': chat_id, 'message_id': message_id}
     requests.post(url, json=payload)
 
-# Main update handler
+# Handle updates
 def process_update(update):
     if 'message' not in update:
         return
 
-    chat_id = update['message']['chat']['id']
-    user_id = update['message']['from']['id']
-    text = update['message'].get('text', '')
-    document = update['message'].get('document')
-    video = update['message'].get('video')
+    message = update['message']
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    text = message.get('text', '')
+    document = message.get('document')
+    video = message.get('video')
 
-    # Admin uploading file
+    # Admin uploads file
     if (document or video) and user_id == ADMIN_ID:
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
         return
 
-    # Admin naming movie
+    # Admin names movie
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
         save_movie(text, TEMP_FILE_IDS[chat_id])
         send_message(chat_id, f"Movie '{text}' has been added.")
@@ -139,14 +136,14 @@ def process_update(update):
         del TEMP_FILE_IDS[chat_id]
         return
 
-    # List files
+    # List stored files
     if text == '/list_files' and user_id == ADMIN_ID:
         movies = load_movies()
         msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
         send_message(chat_id, msg)
         return
 
-    # Rename file
+    # Rename movie
     if text.startswith('/rename_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=2)
         if len(parts) < 3:
@@ -160,7 +157,7 @@ def process_update(update):
                 send_message(chat_id, f"Movie '{old_name}' not found.")
         return
 
-    # Delete file
+    # Delete movie
     if text.startswith('/delete_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -172,7 +169,7 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
         return
 
-    # Generate movie link
+    # Get movie link
     if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -193,14 +190,14 @@ def process_update(update):
     if text.startswith('/start '):
         movie_name = text.replace('/start ', '').replace('_', ' ')
         movies = load_movies()
-        if movie_name in movies and 'file_id' in movies[movie_name]:
+        if movie_name in movies:
             send_file(chat_id, movies[movie_name]['file_id'])
             log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}")
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-# Webhook Endpoint
+# Webhook endpoint
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
     try:
@@ -211,6 +208,17 @@ def handle_webhook():
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-# Run
+# Set webhook on startup
+def set_webhook():
+    webhook_url = f"{WEBHOOK_BASE_URL}/{BOT_TOKEN}"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    response = requests.post(url, json={"url": webhook_url})
+    if response.ok:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook set successfully to {webhook_url}")
+    else:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to set webhook: {response.text}")
+
+# Run the app
 if __name__ == '__main__':
+    set_webhook()
     app.run(host='0.0.0.0', port=8080)
