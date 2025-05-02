@@ -108,8 +108,9 @@ def keep_alive():
         sleep(600)  # Increased to 10 minutes
 
 def run_deletion_checker():
-    """Run deletion checker and log flusher every 60 seconds."""
+    """Run deletion checker and log flusher every 120 seconds."""
     global LAST_DELETION_CHECK
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Thread started", critical=True)
     while True:
         try:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Running")
@@ -125,7 +126,7 @@ def run_deletion_checker():
             except Exception as e:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[deletion_checker] Reconnect failed: {e}", critical=True)
             sleep(10)
-        sleep(60)
+        sleep(120)  # Increased to 120 seconds to reduce CPU usage
 
 def run_webhook_checker():
     """Periodically check webhook every 10 minutes."""
@@ -173,31 +174,47 @@ def task_health():
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
-        if LAST_DELETION_CHECK is None or (now - LAST_DELETION_CHECK) > timedelta(minutes=3):
-            age = "None" if LAST_DELETION_CHECK is None else f"{(now - LAST_DELETION_CHECK).total_seconds()} seconds"
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Deletion task not running or stalled (last check: {age})", critical=True)
-            return "Deletion task is unhealthy", 500
+        deletion_status = "unknown"
+        if LAST_DELETION_CHECK is None:
+            deletion_status = "not running (LAST_DELETION_CHECK is None)"
+        elif (now - LAST_DELETION_CHECK) > timedelta(minutes=3):
+            deletion_status = f"stalled (last check: {(now - LAST_DELETION_CHECK).total_seconds()} seconds ago)"
+        else:
+            deletion_status = "running"
 
         from database import client
+        mongo_status = "unknown"
         for attempt in range(3):
             try:
                 client.admin.command('ping')
+                mongo_status = "connected"
                 break
             except Exception as e:
                 if attempt == 2:
-                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] MongoDB ping failed after 3 attempts: {str(e)}", critical=True)
-                    return "MongoDB is unhealthy", 500
+                    mongo_status = f"failed: {str(e)}"
                 sleep(1)
 
+        telegram_status = "unknown"
         response = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=5)
-        if not response.ok:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Telegram API error: {response.text}", critical=True)
-            return "Telegram API is unhealthy", 500
+        if response.ok:
+            telegram_status = "connected"
+        else:
+            telegram_status = f"failed: {response.text}"
 
+        webhook_status = "unknown"
         webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5)
-        if not webhook_info.ok or webhook_info.json()['result']['url'] != f"{APP_URL}/webhook":
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Webhook misconfigured: {webhook_info.text}", critical=True)
-            return "Webhook is unhealthy", 500
+        if webhook_info.ok and webhook_info.json()['result']['url'] == f"{APP_URL}/webhook":
+            webhook_status = "configured"
+        else:
+            webhook_status = f"misconfigured: {webhook_info.text}"
+
+        if deletion_status in ("not running", "stalled") or mongo_status != "connected" or telegram_status != "connected" or webhook_status != "configured":
+            log_to_discord(
+                DISCORD_WEBHOOK_STATUS,
+                f"[task_health] Unhealthy: Deletion={deletion_status}, MongoDB={mongo_status}, Telegram={telegram_status}, Webhook={webhook_status}",
+                critical=True
+            )
+            return f"Unhealthy: Deletion={deletion_status}, MongoDB={mongo_status}, Telegram={telegram_status}, Webhook={webhook_status}", 500
 
         return "All services are running!", 200
     except Exception as e:
