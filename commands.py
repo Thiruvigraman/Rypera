@@ -1,13 +1,25 @@
 #commands.py
+
 from typing import Dict, Any, Optional
 from bot import send_message, send_message_with_inline_keyboard
-from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
+from config import (
+    ADMIN_ID,
+    BOT_USERNAME,
+    DISCORD_WEBHOOK_STATUS,
+    DISCORD_WEBHOOK_LIST_LOGS,
+    DISCORD_WEBHOOK_FILE_ACCESS
+)
 from database import (
-    save_movie, get_all_movies, update_movie_name, delete_movie,
-    get_movie_by_name, save_temp_file_id, get_temp_file_id, delete_temp_file_id
+    save_movie,
+    get_all_movies,
+    update_movie_name,
+    delete_movie,
+    get_movie_by_name,
+    save_temp_file_id,
+    get_temp_file_id,
+    delete_temp_file_id
 )
 from utils import log_to_discord
-
 
 def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
     """Handle file uploads from admin."""
@@ -26,7 +38,6 @@ def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str,
         send_message(chat_id, "✅ File received! Now send the movie name to store it.")
     else:
         send_message(chat_id, "⚠️ No valid file found. Please upload again.")
-
 
 def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
     """Handle naming of uploaded movies."""
@@ -50,7 +61,6 @@ def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -
     else:
         send_message(chat_id, "❌ No file found to name. Please upload a file first.")
 
-
 def handle_list_files(chat_id: int, user_id: int) -> None:
     """List all stored movies."""
     if user_id != ADMIN_ID:
@@ -65,7 +75,6 @@ def handle_list_files(chat_id: int, user_id: int) -> None:
     response = "🎞️ Stored movies:\n" + "\n".join([f"• {movie['name']}" for movie in movies])
     send_message(chat_id, response)
     log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] Admin {user_id} listed movies.")
-
 
 def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
     """Rename a movie."""
@@ -88,7 +97,6 @@ def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
     else:
         send_message(chat_id, f"❌ Movie '{old_name}' not found.")
 
-
 def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
     """Delete a movie."""
     if user_id != ADMIN_ID:
@@ -106,7 +114,6 @@ def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
     else:
         send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
 
-
 def handle_get_movie_link(chat_id: int, user_id: int, text: str) -> None:
     """Get movie file link."""
     parts = text.split(maxsplit=1)
@@ -123,12 +130,11 @@ def handle_get_movie_link(chat_id: int, user_id: int, text: str) -> None:
     else:
         send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
 
-
 def handle_start(chat_id: int, user_id: int, text: str) -> None:
     """Handle /start command with optional movie name."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}!.")
+        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}! .")
         return
 
     movie_name = parts[1]
@@ -139,7 +145,6 @@ def handle_start(chat_id: int, user_id: int, text: str) -> None:
         log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[start] User {user_id} accessed '{movie_name}' via /start.")
     else:
         send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
-
 
 def handle_health(chat_id: int, user_id: int) -> None:
     """Check bot health."""
@@ -153,7 +158,6 @@ def handle_health(chat_id: int, user_id: int) -> None:
         send_message(chat_id, "✅ Bot is healthy and connected to MongoDB.")
     except Exception as e:
         send_message(chat_id, f"❌ Bot is unhealthy: {str(e)}")
-
 
 def handle_help(chat_id: int, user_id: int) -> None:
     """Show help message."""
@@ -175,7 +179,6 @@ def handle_help(chat_id: int, user_id: int) -> None:
             "❓ /help - Show this help message"
         )
     send_message(chat_id, response)
-
 
 def handle_announce(chat_id: int, user_id: int, text: str) -> None:
     """Handle /announce command."""
@@ -202,7 +205,6 @@ def handle_announce(chat_id: int, user_id: int, text: str) -> None:
         ]
     }
     send_message_with_inline_keyboard(chat_id, f"📢 Confirm announcement:\n{message}", keyboard)
-
 
 def handle_announce_callback(chat_id: int, user_id: int, callback_data: str, callback_query: Dict[str, Any]) -> None:
     """Handle announcement callback."""
