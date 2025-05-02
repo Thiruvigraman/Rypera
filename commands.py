@@ -6,6 +6,13 @@ from config import ADMIN_ID, BOT_USERNAME
 from database import get_movie_by_name, get_all_movies, save_movie, update_movie_name, delete_movie, save_temp_file_id, get_temp_file_id, delete_temp_file_id, track_user
 from utils import log_to_discord, is_spamming, DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 
+def escape_markdown_v2(text: str) -> str:
+    """Escape special characters for Telegram MarkdownV2."""
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 def start(message: Dict[str, Any]) -> None:
     """Handle /start command, including deep links with movie names."""
     chat_id = message['chat']['id']
@@ -29,9 +36,10 @@ def start(message: Dict[str, Any]) -> None:
             # Suggest similar movies
             movies = get_all_movies()
             similar = [m['name'] for m in movies if movie_name.lower() in m['name'].lower() or m['name'].lower() in movie_name.lower()]
-            error_msg = f"❌ Movie '{movie_name}' not found."
+            error_msg = f"❌ Movie '{escape_markdown_v2(movie_name)}' not found."
             if similar:
-                error_msg += f"\nDid you mean: {', '.join(similar)}?"
+                escaped_similar = [escape_markdown_v2(name) for name in similar]
+                error_msg += f"\nDid you mean: {', '.join(escaped_similar)}?"
             error_msg += "\nUse /list_files to see available movies."
             send_message(chat_id, error_msg)
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] Movie '{movie_name}' not found for chat {chat_id}")
@@ -145,7 +153,7 @@ def list_files(message: Dict[str, Any]) -> None:
         log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] No movies for chat {chat_id}")
         return
 
-    movie_list = "\n".join([f"- {movie['name']}" for movie in movies])
+    movie_list = "\n".join([f"- {escape_markdown_v2(movie['name'])}" for movie in movies])
     send_message(chat_id, f"Available movies:\n{movie_list}")
     log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] Listed {len(movies)} movies for chat {chat_id}")
 
@@ -171,7 +179,7 @@ def get_movie(message: Dict[str, Any]) -> None:
         send_file(chat_id, movie['file_id'], f"Found movie: {movie['name']}")
         log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[get_movie] Sent movie '{movie['name']}' to chat {chat_id}")
     else:
-        send_message(chat_id, f"❌ Movie '{movie_name}' not found.\nUse /list_files to see available movies.")
+        send_message(chat_id, f"❌ Movie '{escape_markdown_v2(movie_name)}' not found.\nUse /list_files to see available movies.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] Movie '{movie_name}' not found for chat {chat_id}")
 
 def rename_file(message: Dict[str, Any]) -> None:
@@ -193,10 +201,10 @@ def rename_file(message: Dict[str, Any]) -> None:
 
     old_name, new_name = command_args
     if update_movie_name(old_name, new_name):
-        send_message(chat_id, f"Movie '{old_name}' renamed to '{new_name}'.")
+        send_message(chat_id, f"Movie '{escape_markdown_v2(old_name)}' renamed to '{escape_markdown_v2(new_name)}'.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Renamed '{old_name}' to '{new_name}' for chat {chat_id}")
     else:
-        send_message(chat_id, f"❌ Movie '{old_name}' not found.")
+        send_message(chat_id, f"❌ Movie '{escape_markdown_v2(old_name)}' not found.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Movie '{old_name}' not found for chat {chat_id}")
 
 def delete_file(message: Dict[str, Any]) -> None:
@@ -218,10 +226,10 @@ def delete_file(message: Dict[str, Any]) -> None:
 
     movie_name = command_args.strip()
     if delete_movie(movie_name):
-        send_message(chat_id, f"Movie '{movie_name}' deleted.")
+        send_message(chat_id, f"Movie '{escape_markdown_v2(movie_name)}' deleted.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Deleted movie '{movie_name}' for chat {chat_id}")
     else:
-        send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
+        send_message(chat_id, f"❌ Movie '{escape_markdown_v2(movie_name)}' not found.")
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Movie '{movie_name}' not found for chat {chat_id}")
 
 def announce(message: Dict[str, Any]) -> None:
