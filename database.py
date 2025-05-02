@@ -1,4 +1,5 @@
 #database.py
+
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from typing import Dict, Any, List, Optional
@@ -97,11 +98,17 @@ def delete_movie(name: str) -> bool:
 
 def get_movie_by_name(name: str) -> Optional[Dict[str, Any]]:
     """Get movie by name."""
-    try:
-        return db['movies'].find_one({"name": name.lower()})
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Error: {str(e)}", critical=True)
-        return None
+    for attempt in range(3):
+        try:
+            movie = db['movies'].find_one({"name": name.lower()})
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Queried movie '{name}'")
+            return movie
+        except Exception as e:
+            if attempt == 2:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie_by_name] Failed to query movie '{name}' after 3 attempts: {str(e)}", critical=True)
+                return None
+            time.sleep(1)
+    return None
 
 def save_temp_file_id(chat_id: int, file_id: str) -> None:
     """Save temporary file ID to database."""
@@ -156,7 +163,6 @@ def process_scheduled_deletions() -> None:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
         deletions = None
-        # Retry find query
         for attempt in range(3):
             try:
                 deletions = db['deletions'].find({"delete_at": {"$lte": now}}).limit(100)
