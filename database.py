@@ -142,12 +142,17 @@ def delete_temp_file_id(chat_id: int) -> None:
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_temp_file_id] Error: {str(e)}", critical=True)
 
-def track_user(user_id: int) -> None:
-    """Track user in database."""
+def track_user(user: Dict[str, Any]) -> None:
+    """Track user in database with ID and username."""
     try:
         db['users'].update_one(
-            {"user_id": user_id},
-            {"$set": {"last_seen": datetime.now(pytz.timezone('Asia/Kolkata'))}},
+            {"user_id": user['id']},
+            {
+                "$set": {
+                    "last_seen": datetime.now(pytz.timezone('Asia/Kolkata')),
+                    "username": user.get('username', '')  # Save username, default to empty string if missing
+                }
+            },
             upsert=True
         )
     except Exception as e:
