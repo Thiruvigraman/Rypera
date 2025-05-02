@@ -1,65 +1,120 @@
-#utils.py
+utils.py
+
 import requests
-from typing import Optional
+from typing import Dict, Any
 from datetime import datetime, timedelta
-from config import MONGODB_URI, ADMIN_ID
 import pytz
-import threading
+from config import (
+    ADMIN_ID,
+    DISCORD_WEBHOOK_STATUS,
+    DISCORD_WEBHOOK_LIST_LOGS,
+    DISCORD_WEBHOOK_FILE_ACCESS
+)
 
-LOG_BUFFER = []
-BUFFER_LOCK = threading.Lock()
-SPAM_TRACKER = {}
+# Store last message times for users to prevent spam
+last_message_times: Dict[int, datetime] = {}
+SPAM_THRESHOLD = 5  # seconds
 
-def log_to_discord(webhook_url: str, message: str, critical: bool = False) -> None:
-    """Log message to Discord."""
-    if MONGODB_URI in message:
-        message = message.replace(MONGODB_URI, "[MONGODB_URI]")
-    ist = pytz.timezone('Asia/Kolkata')
-    timestamp = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %Z")
-    formatted_message = f"[{timestamp}] {message}"
-    with BUFFER_LOCK:
-        LOG_BUFFER.append({"content": formatted_message, "webhook_url": webhook_url, "critical": critical})
-    if critical:
-        flush_log_buffer()
+# Webhook types configuration
+WEBHOOK_TYPES: Dict[str, Dict[str, Any]] = {
+    DISCORD_WEBHOOK_STATUS: {
+        "type": "Bot Status",
+        "emoji": "🌌",
+        "color": 0xA100F2,  # Bright purple
+        "critical_color": 0x7A00B8  # Darker purple
+    },
+    DISCORD_WEBHOOK_LIST_LOGS: {
+        "type": "List Logs",
+        "emoji": "📜",
+        "color": 0x00FF85,  # Bright green
+        "critical_color": 0x00B359  # Darker green
+    },
+    DISCORD_WEBHOOK_FILE_ACCESS: {
+        "type": "File Access",
+        "emoji": "📂",
+        "color": 0xFF9500,  # Bright orange
+        "critical_color": 0xCC7500  # Darker orange
+    }
+}
 
-def flush_log_buffer() -> None:
-    """Flush log buffer to Discord in batches."""
-    with BUFFER_LOCK:
-        if not LOG_BUFFER:
-            return
-        messages = LOG_BUFFER[:]
-        LOG_BUFFER.clear()
-    webhook_batches = {}
-    for msg in messages:
-        webhook_url = msg["webhook_url"]
-        if webhook_url not in webhook_batches:
-            webhook_batches[webhook_url] = []
-        webhook_batches[webhook_url].append(msg["content"])
-    for webhook_url, contents in webhook_batches.items():
-        try:
-            batch_message = "\n".join(contents)
-            if len(batch_message) > 2000:
-                batch_message = batch_message[:1997] + "..."
-            response = requests.post(webhook_url, json={"content": batch_message}, timeout=10)
-            if not response.ok:
-                print(f"[flush_log_buffer] Failed to send to Discord: {response.text}")
-        except Exception as e:
-            print(f"[flush_log_buffer] Error: {str(e)}")
+# Fallback for unknown webhooks
+DEFAULT_WEBHOOK_TYPE = {
+    "type": "Unknown Webhook",
+    "emoji": "❓",
+    "color": 0x808080,  # Gray
+    "critical_color": 0x4B4B4B  # Darker gray
+}
 
-def is_spamming(user_id: int, admin_id: int = ADMIN_ID) -> bool:
-    """Check if user is spamming."""
+def log_to_discord(webhook_url: str, message: str, critical: bool = False, debug: bool = False) -> None:
+    """Send log message to Discord webhook as a colorful embed."""
+    try:
+        ist = pytz.timezone('Asia/Kolkata')
+        timestamp = datetime.now(ist).isoformat()
+
+        # Get webhook type or fallback
+        webhook_config = WEBHOOK_TYPES.get(webhook_url, DEFAULT_WEBHOOK_TYPE)
+        webhook_type = webhook_config["type"]
+        emoji = webhook_config["emoji"]
+        color = webhook_config["critical_color"] if critical else webhook_config["color"]
+
+        # Extract context (e.g., function name) from message
+        context = message.split(']')[0][1:] if message.startswith('[') else "General"
+
+        # Create embed payload
+        embed = {
+            "title": f"{webhook_type} {emoji} {'⚠️' if critical else '🌟'}",
+            "description": message,
+            "color": color,
+            "timestamp": timestamp,
+            "fields": [
+                {
+                    "name": "🔍 Severity",
+                    "value": "🚨 Critical" if critical else "✅ Normal",
+                    "inline": True
+                },
+                {
+                    "name": "📋 Webhook",
+                    "value": webhook_type,
+                    "inline": True
+                },
+                {
+                    "name": "🛠️ Context",
+                    "value": context,
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": "Rypera",
+                "icon_url": "https://i.imgur.com/8j7k4fX.png"  # Replace with your bot's logo
+            },
+            "thumbnail": {
+                "url": "https://i.imgur.com/8j7k4fX.png"  # Replace with your bot's logo
+            }
+        }
+
+        payload = {"embeds": [embed]}
+
+        # Debug logging
+        if debug:
+            print(f"[log_to_discord] Sending to {webhook_url}: {payload}")
+
+        response = requests.post(webhook_url, json=payload, timeout=5)
+        if response.status_code not in (200, 204):
+            print(f"[log_to_discord] Failed to send log to {webhook_url}: {response.status_code}, {response.text}")
+            if debug:
+                print(f"[log_to_discord] Response: {response.text}")
+    except requests.Timeout:
+        print(f"[log_to_discord] Timeout sending log to {webhook_url}: Request timed out after 5 seconds")
+    except Exception as e:
+        print(f"[log_to_discord] Error sending log to {webhook_url}: {str(e)}")
+
+def is_spamming(user_id: int, admin_id: int) -> bool:
+    """Check if user is sending messages too quickly."""
     if user_id == admin_id:
         return False
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
-    if user_id not in SPAM_TRACKER:
-        SPAM_TRACKER[user_id] = []
-    SPAM_TRACKER[user_id] = [t for t in SPAM_TRACKER[user_id] if now - t < timedelta(seconds=15)]
-    if len(SPAM_TRACKER[user_id]) >= 7:
+    now = datetime.now(pytz.timezone('Asia/Kolkata'))
+    last_time = last_message_times.get(user_id)
+    if last_time and (now - last_time).total_seconds() < SPAM_THRESHOLD:
         return True
-    SPAM_TRACKER[user_id].append(now)
-    # Cleanup old users
-    for uid in list(SPAM_TRACKER.keys()):
-        if not SPAM_TRACKER[uid] or now - SPAM_TRACKER[uid][-1] > timedelta(minutes=60):
-            del SPAM_TRACKER[uid]
+    last_message_times[user_id] = now
     return False
