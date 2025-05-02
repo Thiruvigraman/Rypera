@@ -1,7 +1,7 @@
 #database.py
 
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from typing import Dict, Any, List, Optional
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
 from utils import log_to_discord
@@ -11,7 +11,12 @@ import pytz
 import time
 import traceback
 
-client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=15000, maxPoolSize=20, waitQueueTimeoutMS=5000)
+client = MongoClient(
+    MONGODB_URI,
+    serverSelectionTimeoutMS=5000,  # Reduced to 5 seconds
+    maxPoolSize=5,  # Reduced to 5 connections
+    waitQueueTimeoutMS=3000  # Reduced to 3 seconds
+)
 db = client['telegram_bot']
 
 def connect_db(max_retries=3, retry_delay=5):
@@ -25,7 +30,7 @@ def connect_db(max_retries=3, retry_delay=5):
             log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
             cleanup_overdue_deletions()
             return
-        except Exception as e:
+        except ServerSelectionTimeoutError as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[connect_db] Attempt {attempt + 1} failed: {str(e)}", critical=True)
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
@@ -158,7 +163,6 @@ def get_all_users() -> List[Dict[str, Any]]:
 
 def process_scheduled_deletions() -> None:
     """Process any existing scheduled deletions (legacy records)."""
-    import traceback
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
@@ -172,7 +176,7 @@ def process_scheduled_deletions() -> None:
                 if attempt == 2:
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Find query failed after 3 attempts: {str(e)}", critical=True)
                     return
-                sleep(1)
+                time.sleep(1)
 
         deletion_ops = []
         movie_ops = []
@@ -196,7 +200,7 @@ def process_scheduled_deletions() -> None:
                         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Movie find query failed for file_id {file_id}: {str(e)}", critical=True)
                         movie = None
                         break
-                    sleep(1)
+                    time.sleep(1)
 
             if movie:
                 movie_name = movie['name']
@@ -217,7 +221,7 @@ def process_scheduled_deletions() -> None:
                 except Exception as e:
                     if attempt == 2:
                         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Movie bulk write failed: {str(e)}", critical=True)
-                    sleep(1)
+                    time.sleep(1)
 
         if deletion_ops:
             for attempt in range(3):
@@ -234,7 +238,7 @@ def process_scheduled_deletions() -> None:
                                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Individually deleted deletion record with _id: {op['delete_one']['filter']['_id']}.")
                             except Exception as e:
                                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to individually delete _id {op['delete_one']['filter']['_id']}: {str(e)}", critical=True)
-                    sleep(1)
+                    time.sleep(1)
 
         remaining = None
         for attempt in range(3):
@@ -246,7 +250,7 @@ def process_scheduled_deletions() -> None:
                 if attempt == 2:
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Count documents failed: {str(e)}", critical=True)
                     remaining = 0
-                sleep(1)
+                time.sleep(1)
 
         if remaining > 0:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Warning: {remaining} deletion records remain after processing.", critical=True)
