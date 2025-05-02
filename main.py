@@ -1,20 +1,32 @@
 #main.py
 
-from flask import Flask, jsonify
-from config import DISCORD_WEBHOOK_STATUS, APP_URL, BOT_TOKEN
-from webhook_handler import handle_webhook
-from database import connect_db, close_db, process_scheduled_deletions
-from utils import log_to_discord, flush_log_buffer
-from threading import Thread
-from time import sleep
-from datetime import datetime, timedelta
-import atexit
-import sys
-import traceback
-import os
-import signal
-import pytz
-import requests
+try:
+    from flask import Flask, jsonify
+    from config import DISCORD_WEBHOOK_STATUS, APP_URL, BOT_TOKEN
+    from webhook_handler import handle_webhook
+    from database import connect_db, close_db, process_scheduled_deletions
+    from utils import log_to_discord, flush_log_buffer
+    from threading import Thread
+    from time import sleep
+    from datetime import datetime, timedelta
+    import atexit
+    import sys
+    import traceback
+    import os
+    import signal
+    import pytz
+    import requests
+except Exception as e:
+    error_message = f"❌ Import failed: {str(e)}\n{traceback.format_exc()}"
+    print(error_message)
+    # Log to Discord if utils is available
+    try:
+        from utils import log_to_discord
+        from config import DISCORD_WEBHOOK_STATUS
+        log_to_discord(DISCORD_WEBHOOK_STATUS, error_message, critical=True)
+    except:
+        pass
+    sys.exit(1)
 
 app = Flask(__name__)
 LAST_DELETION_CHECK = None
@@ -31,7 +43,7 @@ def set_webhook():
         else:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to set webhook: {response.text}", critical=True)
     except Exception as e:
-        log_to    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
 
 try:
     connect_db()
