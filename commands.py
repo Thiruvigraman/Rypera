@@ -1,235 +1,275 @@
-#commands.py
+#commamds.py
 
-from typing import Dict, Any, Optional
-from bot import send_message, send_message_with_inline_keyboard
-from config import (
-    ADMIN_ID,
-    BOT_USERNAME,
-    DISCORD_WEBHOOK_STATUS,
-    DISCORD_WEBHOOK_LIST_LOGS,
-    DISCORD_WEBHOOK_FILE_ACCESS
-)
-from database import (
-    save_movie,
-    get_all_movies,
-    update_movie_name,
-    delete_movie,
-    get_movie_by_name,
-    save_temp_file_id,
-    get_temp_file_id,
-    delete_temp_file_id
-)
-from utils import log_to_discord
+from typing import Dict, Any
+from bot import send_message, send_file
+from config import ADMIN_ID, BOT_USERNAME
+from database import get_movie_by_name, get_all_movies, save_movie, update_movie_name, delete_movie, save_temp_file_id, get_temp_file_id, delete_temp_file_id, track_user
+from utils import log_to_discord, is_spamming, DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 
-def handle_admin_upload(chat_id: int, user_id: int, document: Optional[Dict[str, Any]], video: Optional[Dict[str, Any]]) -> None:
-    """Handle file uploads from admin."""
-    if user_id != ADMIN_ID:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] Unauthorized access by {user_id}")
+def start(message: Dict[str, Any]) -> None:
+    """Handle /start command, including deep links with movie names."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
+    track_user(user_id)
+
+    if is_spamming(user_id, ADMIN_ID):
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] User {user_id} is spamming /start")
         return
 
-    file_id = (
-        document['file_id'] if document and 'file_id' in document else
-        video['file_id'] if video and 'file_id' in video else
-        None
-    )
-
-    if file_id:
-        save_temp_file_id(chat_id, file_id)
-        send_message(chat_id, "✅ File received! Now send the movie name to store it.")
+    if command_args:
+        # Preserve underscores in movie name
+        movie_name = command_args.strip()
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] Processing deep link for movie: '{movie_name}' (raw: '{command_args}')")
+        movie = get_movie_by_name(movie_name)
+        if movie:
+            send_file(chat_id, movie['file_id'], f"Found movie: {movie['name']}")
+            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[start] Sent movie '{movie['name']}' to chat {chat_id}")
+        else:
+            # Suggest similar movies
+            movies = get_all_movies()
+            similar = [m['name'] for m in movies if movie_name.lower() in m['name'].lower() or m['name'].lower() in movie_name.lower()]
+            error_msg = f"❌ Movie '{movie_name}' not found."
+            if similar:
+                error_msg += f"\nDid you mean: {', '.join(similar)}?"
+            error_msg += "\nUse /list_files to see available movies."
+            send_message(chat_id, error_msg)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] Movie '{movie_name}' not found for chat {chat_id}")
     else:
-        send_message(chat_id, "⚠️ No valid file found. Please upload again.")
+        welcome_msg = (
+            f"Welcome to {BOT_USERNAME}!\n"
+            "This is a file-sharing bot.\n"
+            "Use /help for commands."
+        )
+        send_message(chat_id, welcome_msg)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[start] Sent welcome message to chat {chat_id}")
 
-def handle_admin_naming_movie(chat_id: int, user_id: int, text: Optional[str]) -> None:
-    """Handle naming of uploaded movies."""
-    if user_id != ADMIN_ID or not text:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_naming_movie] Invalid request by {user_id}")
+def help_command(message: Dict[str, Any]) -> None:
+    """Handle /help command, showing different responses for admins and users."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if is_spamming(user_id, ADMIN_ID):
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[help] User {user_id} is spamming /help")
         return
 
-    text = text.strip()
-    if len(text) > 100:
-        send_message(chat_id, "✋ Movie name too long. Keep it under 100 characters.")
+    if user_id == ADMIN_ID:
+        help_text = (
+            f"Welcome to {BOT_USERNAME} Admin Commands!\n\n"
+            "/start - Start the bot or access a movie via deep link\n"
+            "/help - Show this message\n"
+            "/addfile - Upload a movie file (admin only)\n"
+            "/namefile <name> - Name the last uploaded file (admin only)\n"
+            "/list_files - List all stored movies\n"
+            "/getmovie <name> - Retrieve a movie by name\n"
+            "/rename_file <old_name> <new_name> - Rename a movie (admin only)\n"
+            "/delete_file <name> - Delete a movie (admin only)\n"
+            "/announce <message> - Send a message to all users (admin only)\n"
+            "/health - Check bot health (admin only)"
+        )
+    else:
+        help_text = (
+            f"Welcome to {BOT_USERNAME}!\n"
+            "This is a file-sharing bot.\n\n"
+            "/start - Start the bot\n"
+            "/help - Show this message\n"
+            "/list_files - List all movies\n"
+            "/getmovie <name> - Retrieve a movie by name"
+        )
+    send_message(chat_id, help_text)
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[help] Sent help message to chat {chat_id} (admin: {user_id == ADMIN_ID})")
+
+def handle_admin_upload(message: Dict[str, Any]) -> None:
+    """Handle movie file uploads from admin."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ Only admins can upload files.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] Unauthorized upload attempt by user {user_id}")
         return
-    if not text.isprintable():
-        send_message(chat_id, "⚠️ Movie name contains invalid characters.")
+
+    if 'document' not in message and 'video' not in message:
+        send_message(chat_id, "Please upload a movie file.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_admin_upload] No file in message from chat {chat_id}")
+        return
+
+    file_id = message.get('document', message.get('video'))['file_id']
+    save_temp_file_id(chat_id, file_id)
+    send_message(chat_id, "File uploaded. Please provide a name using /namefile <name>.")
+    log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[handle_admin_upload] Temp file {file_id} saved for chat {chat_id}")
+
+def name_file(message: Dict[str, Any]) -> None:
+    """Name the last uploaded file."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ Only admins can name files.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[name_file] Unauthorized name attempt by user {user_id}")
         return
 
     file_id = get_temp_file_id(chat_id)
-    if file_id:
-        save_movie(file_id, text, chat_id)
-        delete_temp_file_id(chat_id)
-        send_message(chat_id, f"🎬 Movie '{text}' stored successfully!")
-    else:
-        send_message(chat_id, "❌ No file found to name. Please upload a file first.")
+    if not file_id:
+        send_message(chat_id, "No file uploaded. Please upload a file first using /addfile.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[name_file] No temp file for chat {chat_id}")
+        return
 
-def handle_list_files(chat_id: int, user_id: int) -> None:
+    command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
+    if not command_args:
+        send_message(chat_id, "Please provide a name: /namefile <name>")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[name_file] No name provided for chat {chat_id}")
+        return
+
+    movie_name = command_args.strip()
+    save_movie(file_id, movie_name, chat_id)
+    delete_temp_file_id(chat_id)
+    log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[name_file] Named file {file_id} as '{movie_name}' for chat {chat_id}")
+
+def list_files(message: Dict[str, Any]) -> None:
     """List all stored movies."""
-    if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized.")
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if is_spamming(user_id, ADMIN_ID):
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[list_files] User {user_id} is spamming /list_files")
         return
 
     movies = get_all_movies()
     if not movies:
-        send_message(chat_id, "📂 No movies found.")
+        send_message(chat_id, "No movies found.")
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] No movies for chat {chat_id}")
         return
 
-    response = "🎞️ Stored movies:\n" + "\n".join([f"• {movie['name']}" for movie in movies])
-    send_message(chat_id, response)
-    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] Admin {user_id} listed movies.")
+    movie_list = "\n".join([f"- {movie['name']}" for movie in movies])
+    send_message(chat_id, f"Available movies:\n{movie_list}")
+    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"[list_files] Listed {len(movies)} movies for chat {chat_id}")
 
-def handle_rename_file(chat_id: int, user_id: int, text: str) -> None:
+def get_movie(message: Dict[str, Any]) -> None:
+    """Retrieve a movie by name."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if is_spamming(user_id, ADMIN_ID):
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] User {user_id} is spamming /getmovie")
+        return
+
+    command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
+    if not command_args:
+        send_message(chat_id, "Please provide a movie name: /getmovie <name>")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] No name provided for chat {chat_id}")
+        return
+
+    movie_name = command_args.strip()
+    movie = get_movie_by_name(movie_name)
+    if movie:
+        send_file(chat_id, movie['file_id'], f"Found movie: {movie['name']}")
+        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[get_movie] Sent movie '{movie['name']}' to chat {chat_id}")
+    else:
+        send_message(chat_id, f"❌ Movie '{movie_name}' not found.\nUse /list_files to see available movies.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[get_movie] Movie '{movie_name}' not found for chat {chat_id}")
+
+def rename_file(message: Dict[str, Any]) -> None:
     """Rename a movie."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
     if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized.")
+        send_message(chat_id, "❌ Only admins can rename files.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Unauthorized rename attempt by user {user_id}")
         return
 
-    parts = text.split(maxsplit=2)
-    if len(parts) < 3:
-        send_message(chat_id, "Usage: /rename_file old_name new_name")
+    command_args = message.get('text', '').split(maxsplit=2)[1:] if len(message.get('text', '').split()) > 2 else []
+    if len(command_args) != 2:
+        send_message(chat_id, "Please provide old and new names: /rename_file <old_name> <new_name>")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Invalid args for chat {chat_id}")
         return
 
-    old_name, new_name = parts[1], parts[2]
-    if len(new_name) > 100 or not new_name.isprintable():
-        send_message(chat_id, "⚠️ New movie name is invalid or too long.")
-        return
-
+    old_name, new_name = command_args
     if update_movie_name(old_name, new_name):
-        send_message(chat_id, f"✏️ Renamed '{old_name}' to '{new_name}'.")
+        send_message(chat_id, f"Movie '{old_name}' renamed to '{new_name}'.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Renamed '{old_name}' to '{new_name}' for chat {chat_id}")
     else:
         send_message(chat_id, f"❌ Movie '{old_name}' not found.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[rename_file] Movie '{old_name}' not found for chat {chat_id}")
 
-def handle_delete_file(chat_id: int, user_id: int, text: str) -> None:
+def delete_file(message: Dict[str, Any]) -> None:
     """Delete a movie."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
     if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized.")
+        send_message(chat_id, "❌ Only admins can delete files.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Unauthorized delete attempt by user {user_id}")
         return
 
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        send_message(chat_id, "Usage: /delete_file movie_name")
+    command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
+    if not command_args:
+        send_message(chat_id, "Please provide a movie name: /delete_file <name>")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] No name provided for chat {chat_id}")
         return
 
-    movie_name = parts[1]
+    movie_name = command_args.strip()
     if delete_movie(movie_name):
-        send_message(chat_id, f"🗑️ Deleted '{movie_name}'.")
+        send_message(chat_id, f"Movie '{movie_name}' deleted.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Deleted movie '{movie_name}' for chat {chat_id}")
     else:
         send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_file] Movie '{movie_name}' not found for chat {chat_id}")
 
-def handle_get_movie_link(chat_id: int, user_id: int, text: str) -> None:
-    """Get movie file link."""
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        send_message(chat_id, "Usage: /get_movie_link movie_name")
-        return
+def announce(message: Dict[str, Any]) -> None:
+    """Send an announcement to all users."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
 
-    movie_name = parts[1]
-    movie = get_movie_by_name(movie_name)
-    if movie:
-        file_id = movie['file_id']
-        send_message(chat_id, f"🔗 File ID for '{movie_name}': `{file_id}`")
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[get_movie_link] User {user_id} accessed '{movie_name}'.")
-    else:
-        send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
-
-def handle_start(chat_id: int, user_id: int, text: str) -> None:
-    """Handle /start command with optional movie name."""
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}! .")
-        return
-
-    movie_name = parts[1]
-    movie = get_movie_by_name(movie_name)
-    if movie:
-        file_id = movie['file_id']
-        send_message(chat_id, f"📦 File ID for '{movie_name}': `{file_id}`")
-        log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"[start] User {user_id} accessed '{movie_name}' via /start.")
-    else:
-        send_message(chat_id, f"❌ Movie '{movie_name}' not found.")
-
-def handle_health(chat_id: int, user_id: int) -> None:
-    """Check bot health."""
     if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized.")
+        send_message(chat_id, "❌ Only admins can send announcements.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[announce] Unauthorized announce attempt by user {user_id}")
+        return
+
+    command_args = message.get('text', '').split(maxsplit=1)[1] if len(message.get('text', '').split()) > 1 else ''
+    if not command_args:
+        send_message(chat_id, "Please provide a message: /announce <message>")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[announce] No message provided for chat {chat_id}")
+        return
+
+    from database import get_all_users
+    users = get_all_users()
+    announcement = command_args.strip()
+    for user in users:
+        user_chat_id = user['user_id']
+        try:
+            send_message(user_chat_id, f"📢 Announcement: {announcement}")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[announce] Sent to user {user_chat_id}")
+        except Exception as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[announce] Failed to send to user {user_chat_id}: {str(e)}", critical=True)
+    send_message(chat_id, "Announcement sent to all users.")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[announce] Sent announcement to {len(users)} users from chat {chat_id}")
+
+def health_check(message: Dict[str, Any]) -> None:
+    """Check bot health (admin only)."""
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    track_user(user_id)
+
+    if user_id != ADMIN_ID:
+        send_message(chat_id, "❌ Only admins can check health.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[health_check] Unauthorized health check by user {user_id}")
         return
 
     try:
         from database import client
         client.admin.command('ping')
-        send_message(chat_id, "✅ Bot is healthy and connected to MongoDB.")
+        send_message(chat_id, "✅ Bot is healthy: MongoDB connection OK.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[health_check] Bot is healthy for chat {chat_id}")
     except Exception as e:
         send_message(chat_id, f"❌ Bot is unhealthy: {str(e)}")
-
-def handle_help(chat_id: int, user_id: int) -> None:
-    """Show help message."""
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_help] Processing /help for user {user_id}, ADMIN_ID: {ADMIN_ID}")
-    if user_id != ADMIN_ID:
-        response = "This is an file sharing bot"
-    else:
-        response = (
-            f"🤖 Welcome to {BOT_USERNAME} (Admin)!\n\n"
-            "🛠️ Available Commands:\n"
-            "📥 Upload a file and send a name to store it\n"
-            "📃 /list_files - List all movies\n"
-            "✏️ /rename_file old_name new_name - Rename a movie\n"
-            "🗑️ /delete_file movie_name - Delete a movie\n"
-            "🔗 /get_movie_link movie_name - Get movie file ID\n"
-            "🔗 /start [movie_name] - Get a movie link\n"
-            "❤️ /health - Check bot health\n"
-            "📢 /announce message - Announce to all users\n"
-            "❓ /help - Show this help message"
-        )
-    send_message(chat_id, response)
-
-def handle_announce(chat_id: int, user_id: int, text: str) -> None:
-    """Handle /announce command."""
-    if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized.")
-        return
-
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        send_message(chat_id, "Usage: /announce message")
-        return
-
-    message = parts[1]
-    if len(f"announce_confirm_{message}") > 64:
-        send_message(chat_id, "⚠️ Message too long. Keep it under 50 characters.")
-        return
-
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "✅ Confirm", "callback_data": f"announce_confirm_{message}"},
-                {"text": "❌ Cancel", "callback_data": "announce_cancel"}
-            ]
-        ]
-    }
-    send_message_with_inline_keyboard(chat_id, f"📢 Confirm announcement:\n{message}", keyboard)
-
-def handle_announce_callback(chat_id: int, user_id: int, callback_data: str, callback_query: Dict[str, Any]) -> None:
-    """Handle announcement callback."""
-    if user_id != ADMIN_ID:
-        send_message(chat_id, "❌ You are not authorized to confirm announcements.")
-        return
-
-    from database import get_all_users
-
-    if callback_data == "announce_cancel":
-        send_message(chat_id, "❌ Announcement cancelled.")
-        return
-
-    if callback_data.startswith("announce_confirm_"):
-        message = callback_data[len("announce_confirm_"):]
-        users = get_all_users()
-        success_count = 0
-
-        for user in users:
-            try:
-                if send_message(user['user_id'], f"📢 Announcement:\n{message}"):
-                    success_count += 1
-            except Exception:
-                continue
-
-        send_message(chat_id, f"✅ Announcement sent to {success_count} users.")
-    else:
-        send_message(chat_id, "⚠️ Invalid callback data.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[health_check] Bot is unhealthy for chat {chat_id}: {str(e)}", critical=True)
