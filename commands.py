@@ -1,5 +1,4 @@
 #commands.py
-
 from typing import Dict, Any, Optional
 from bot import send_message, send_message_with_inline_keyboard
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
@@ -160,22 +159,17 @@ def handle_help(chat_id: int, user_id: int) -> None:
     """Show help message."""
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[handle_help] Processing /help for user {user_id}, ADMIN_ID: {ADMIN_ID}")
     if user_id != ADMIN_ID:
-        response = (
-            f"🤖 Welcome to {BOT_USERNAME}!\n"
-            "Available commands:\n"
-            "🔗 /start [movie_name] - Get a movie link\n"
-            "🔍 /get_movie_link movie_name - Get movie file ID\n"
-            "❓ /help - Show this help message"
-        )
+        response = "This is an file sharing bot"
     else:
         response = (
             f"🤖 Welcome to {BOT_USERNAME} (Admin)!\n\n"
-            "🛠️ Admin Commands:\n"
+            "🛠️ Available Commands:\n"
             "📥 Upload a file and send a name to store it\n"
             "📃 /list_files - List all movies\n"
             "✏️ /rename_file old_name new_name - Rename a movie\n"
             "🗑️ /delete_file movie_name - Delete a movie\n"
             "🔗 /get_movie_link movie_name - Get movie file ID\n"
+            "🔗 /start [movie_name] - Get a movie link\n"
             "❤️ /health - Check bot health\n"
             "📢 /announce message - Announce to all users\n"
             "❓ /help - Show this help message"
