@@ -38,16 +38,18 @@ def close_db():
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[close_db] Error: {str(e)}", critical=True)
 
 def save_movie(file_id: str, name: str, chat_id: int) -> None:
-    """Save movie to database and schedule deletion for non-admin uploads."""
+    """Save movie to database; no deletion for admin uploads."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
         db['movies'].insert_one({"file_id": file_id, "name": name.lower(), "chat_id": chat_id})
-        if chat_id != ADMIN_ID:  # Only schedule deletion for non-admin uploads
+        if chat_id != ADMIN_ID:
             delete_at = datetime.now(ist) + timedelta(minutes=DELETION_MINUTES)
             db['deletions'].insert_one({"file_id": file_id, "chat_id": chat_id, "delete_at": delete_at})
             send_message(chat_id, f"Movie '{name}' will be deleted at {delete_at.strftime('%Y-%m-%d %H:%M:%S %Z')}.")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Scheduled deletion for movie '{name}' at {delete_at} for non-admin chat {chat_id}.")
         else:
             send_message(chat_id, f"Movie '{name}' stored successfully (no deletion scheduled).")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Stored movie '{name}' for admin chat {chat_id} (no deletion).")
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[save_movie] Error: {str(e)}", critical=True)
         send_message(chat_id, "Failed to save movie.")
@@ -78,7 +80,7 @@ def delete_movie(name: str) -> bool:
         file_id = movie['file_id']
         db['movies'].delete_one({"name": name.lower()})
         db['deletions'].delete_one({"file_id": file_id})
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Deleted movie '{name}' and its deletion schedule.")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Deleted movie '{name}' and its deletion schedule (file_id: {file_id}).")
         return True
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Error: {str(e)}", critical=True)
@@ -139,18 +141,21 @@ def get_all_users() -> List[Dict[str, Any]]:
         return []
 
 def process_scheduled_deletions() -> None:
-    """Process scheduled deletions in bulk."""
+    """Process scheduled deletions in a single batch."""
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
         deletions = db['deletions'].find({"delete_at": {"$lte": now}}).limit(100)
         deletion_ops = []
         movie_ops = []
+        processed_count = 0
+
         for deletion in deletions:
             file_id = deletion['file_id']
             chat_id = deletion['chat_id']
             deletion_id = deletion['_id']
             movie = db['movies'].find_one({"file_id": file_id})
+            processed_count += 1
             if movie:
                 movie_name = movie['name']
                 movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
@@ -159,13 +164,22 @@ def process_scheduled_deletions() -> None:
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] No movie found for file_id {file_id}, clearing deletion record.")
             deletion_ops.append({"delete_one": {"filter": {"_id": deletion_id}}})
+
         if movie_ops:
-            db['movies'].bulk_write(movie_ops, ordered=False)
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted {len(movie_ops)} movies.")
+            try:
+                db['movies'].bulk_write(movie_ops, ordered=False)
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted {len(movie_ops)} movies.")
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to delete movies: {str(e)}", critical=True)
+
         if deletion_ops:
-            db['deletions'].bulk_write(deletion_ops, ordered=False)
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records.")
-        if not deletion_ops and not movie_ops:
+            try:
+                db['deletions'].bulk_write(deletion_ops, ordered=False)
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records.")
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Failed to clear deletion records: {str(e)}", critical=True)
+
+        if processed_count == 0:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_scheduled_deletions] No deletions to process.")
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error: {str(e)}\n{traceback.format_exc()}", critical=True)
