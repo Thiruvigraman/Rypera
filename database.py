@@ -75,8 +75,10 @@ def delete_movie(name: str) -> bool:
         movie = db['movies'].find_one({"name": name.lower()})
         if not movie:
             return False
+        file_id = movie['file_id']
         db['movies'].delete_one({"name": name.lower()})
-        db['deletions'].delete_one({"file_id": movie['file_id']})
+        db['deletions'].delete_one({"file_id": file_id})
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Deleted movie '{name}' and its deletion schedule.")
         return True
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[delete_movie] Error: {str(e)}", critical=True)
@@ -141,25 +143,29 @@ def process_scheduled_deletions() -> None:
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
-        while True:
-            deletions = db['deletions'].find({"delete_at": {"$lte": now}}).limit(100)
-            deletion_ops = []
-            movie_ops = []
-            count = 0
-            for deletion in deletions:
-                file_id = deletion['file_id']
-                chat_id = deletion['chat_id']
-                movie = db['movies'].find_one({"file_id": file_id})
-                if movie:
-                    movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
-                    send_message(chat_id, f"Movie '{movie['name']}' has been deleted as scheduled.")
-                deletion_ops.append({"delete_one": {"filter": {"_id": deletion['_id']}}})
-                count += 1
-            if not count:
-                break
-            if movie_ops:
-                db['movies'].bulk_write(movie_ops, ordered=False)
-            if deletion_ops:
-                db['deletions'].bulk_write(deletion_ops, ordered=False)
+        deletions = db['deletions'].find({"delete_at": {"$lte": now}}).limit(100)
+        deletion_ops = []
+        movie_ops = []
+        for deletion in deletions:
+            file_id = deletion['file_id']
+            chat_id = deletion['chat_id']
+            deletion_id = deletion['_id']
+            movie = db['movies'].find_one({"file_id": file_id})
+            if movie:
+                movie_name = movie['name']
+                movie_ops.append({"delete_one": {"filter": {"file_id": file_id}}})
+                send_message(chat_id, f"Movie '{movie_name}' has been deleted as scheduled.")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted movie '{movie_name}' (file_id: {file_id}) for chat {chat_id}.")
+            else:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] No movie found for file_id {file_id}, clearing deletion record.")
+            deletion_ops.append({"delete_one": {"filter": {"_id": deletion_id}}})
+        if movie_ops:
+            db['movies'].bulk_write(movie_ops, ordered=False)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Deleted {len(movie_ops)} movies.")
+        if deletion_ops:
+            db['deletions'].bulk_write(deletion_ops, ordered=False)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Cleared {len(deletion_ops)} deletion records.")
+        if not deletion_ops and not movie_ops:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "[process_scheduled_deletions] No deletions to process.")
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error: {str(e)}", critical=True)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[process_scheduled_deletions] Error: {str(e)}\n{traceback.format_exc()}", critical=True)
