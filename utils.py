@@ -18,6 +18,19 @@ SPAM_THRESHOLD = 5  # seconds
 # Log buffer for batching
 LOG_BUFFER = []
 
+# Critical contexts that should always be sent to Discord
+CRITICAL_CONTEXTS = [
+    "connect_db",
+    "handle_webhook",
+    "task_health",
+    "set_webhook",
+    "check_webhook",
+    "deletion_checker",
+    "keep_alive",
+    "main",
+    "health_check"
+]
+
 # Webhook types configuration
 WEBHOOK_TYPES: Dict[str, Dict[str, Any]] = {
     DISCORD_WEBHOOK_STATUS: {
@@ -49,7 +62,17 @@ DEFAULT_WEBHOOK_TYPE = {
 }
 
 def log_to_discord(webhook_url: str, message: str, critical: bool = False, debug: bool = False) -> None:
-    """Send log message to Discord webhook as a colorful embed."""
+    """Send log message to Discord webhook as a colorful embed for critical logs or specific contexts."""
+    # Extract context from message (e.g., function name)
+    context = message.split(']')[0][1:] if message.startswith('[') else "General"
+    
+    # Always print to console for Render logs
+    print(f"[log_to_discord] {message}{' [CRITICAL]' if critical else ''}{' [DEBUG]' if debug else ''}")
+    
+    # Only send to Discord if critical or in CRITICAL_CONTEXTS
+    if not (critical or context in CRITICAL_CONTEXTS):
+        return
+    
     LOG_BUFFER.append((webhook_url, message, critical, debug))
     if critical or len(LOG_BUFFER) >= 20:  # Flush on critical logs or 20 entries
         flush_log_buffer()
@@ -104,7 +127,7 @@ def flush_log_buffer() -> None:
 
             payload = {"embeds": [embed]}
 
-            # Debug logging
+            # Debug logging (print only)
             if debug:
                 print(f"[log_to_discord] Sending to {webhook_url}: {payload}")
 
