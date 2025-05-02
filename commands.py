@@ -128,7 +128,7 @@ def handle_start(chat_id: int, user_id: int, text: str) -> None:
     """Handle /start command with optional movie name."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}! Use /help for commands.")
+        send_message(chat_id, f"👋 Welcome to {BOT_USERNAME}!.")
         return
 
     movie_name = parts[1]
