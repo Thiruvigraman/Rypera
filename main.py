@@ -19,7 +19,6 @@ try:
 except Exception as e:
     error_message = f"❌ Import failed: {str(e)}\n{traceback.format_exc()}"
     print(error_message)
-    # Log to Discord if utils is available
     try:
         from utils import log_to_discord
         from config import DISCORD_WEBHOOK_STATUS
@@ -44,6 +43,27 @@ def set_webhook():
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to set webhook: {response.text}", critical=True)
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook setup error: {str(e)}", critical=True)
+
+def check_webhook():
+    """Verify and set Telegram webhook if necessary."""
+    webhook_url = f"{APP_URL}/webhook"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.ok:
+            webhook_info = response.json()['result']
+            current_url = webhook_info.get('url', '')
+            if current_url != webhook_url:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"[check_webhook] Webhook mismatch: current={current_url}, expected={webhook_url}", critical=True)
+                set_webhook()
+            else:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "[check_webhook] Webhook is correctly set")
+        else:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[check_webhook] Failed to get webhook info: {response.text}", critical=True)
+            set_webhook()
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"[check_webhook] Error: {str(e)}", critical=True)
+        set_webhook()
 
 try:
     connect_db()
@@ -71,7 +91,7 @@ signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
 
 def keep_alive():
-    """Ping /task-health every 5 minutes to prevent Render spin-down."""
+    """Ping /task-health every 10 minutes to prevent Render spin-down."""
     while True:
         try:
             response = requests.get(f"{APP_URL}/task-health", timeout=10)
@@ -85,15 +105,16 @@ def keep_alive():
                 )
         except requests.RequestException as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[keep_alive] Error: {e}", critical=True)
-        sleep(300)
+        sleep(600)  # Increased to 10 minutes
 
 def run_deletion_checker():
-    """Run deletion checker every 60 seconds."""
+    """Run deletion checker and log flusher every 60 seconds."""
     global LAST_DELETION_CHECK
     while True:
         try:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "[deletion_checker] Running")
             process_scheduled_deletions()
+            flush_log_buffer()  # Flush logs during deletion check
             ist = pytz.timezone('Asia/Kolkata')
             LAST_DELETION_CHECK = datetime.now(ist)
         except Exception as e:
@@ -106,14 +127,11 @@ def run_deletion_checker():
             sleep(10)
         sleep(60)
 
-def run_log_flusher():
-    """Flush log buffer every 5 minutes."""
+def run_webhook_checker():
+    """Periodically check webhook every 10 minutes."""
     while True:
-        try:
-            flush_log_buffer()
-        except Exception as e:
-            print(f"[log_flusher] Error: {e}")
-        sleep(300)
+        check_webhook()
+        sleep(600)
 
 keep_alive_thread = Thread(target=keep_alive, daemon=True)
 keep_alive_thread.start()
@@ -121,8 +139,8 @@ keep_alive_thread.start()
 deletion_thread = Thread(target=run_deletion_checker, daemon=True)
 deletion_thread.start()
 
-log_thread = Thread(target=run_log_flusher, daemon=True)
-log_thread.start()
+webhook_checker_thread = Thread(target=run_webhook_checker, daemon=True)
+webhook_checker_thread.start()
 
 @app.route("/webhook", methods=['POST'])
 def webhook():
@@ -159,7 +177,7 @@ def task_health():
             age = "None" if LAST_DELETION_CHECK is None else f"{(now - LAST_DELETION_CHECK).total_seconds()} seconds"
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Deletion task not running or stalled (last check: {age})", critical=True)
             return "Deletion task is unhealthy", 500
-        
+
         from database import client
         for attempt in range(3):
             try:
@@ -170,12 +188,17 @@ def task_health():
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] MongoDB ping failed after 3 attempts: {str(e)}", critical=True)
                     return "MongoDB is unhealthy", 500
                 sleep(1)
-        
+
         response = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=5)
         if not response.ok:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Telegram API error: {response.text}", critical=True)
             return "Telegram API is unhealthy", 500
-        
+
+        webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5)
+        if not webhook_info.ok or webhook_info.json()['result']['url'] != f"{APP_URL}/webhook":
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Webhook misconfigured: {webhook_info.text}", critical=True)
+            return "Webhook is unhealthy", 500
+
         return "All services are running!", 200
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"[task_health] Unexpected error: {str(e)}\n{traceback.format_exc()}", critical=True)
