@@ -46,9 +46,9 @@ try:
     client.server_info()  # Force connection to test
     db = client['telegram_bot']
     movies_collection = db['movies']
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "âœ… MongoDB connected successfully.")
 except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to connect to MongoDB: {e}")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"âŒ Failed to connect to MongoDB: {e}")
     raise e
 
 # On startup
@@ -99,9 +99,9 @@ def send_file(chat_id, file_id):
         file_message_id = message_data['result']['message_id']
 
         warning_text = (
-            "❗️ *IMPORTANT* ❗️\n\n"
+            "â—ï¸ *IMPORTANT* â—ï¸\n\n"
             "This Video / File Will Be Deleted In *30 minutes* _(Due To Copyright Issues)_\n\n"
-            "📌 *Please Forward This Video / File To Somewhere Else And Start Downloading There.*"
+            "ðŸ“Œ *Please Forward This Video / File To Somewhere Else And Start Downloading There.*"
         )
         warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
         warning_message_id = warning_response['result']['message_id']
@@ -215,3 +215,34 @@ def handle_webhook():
 # Run
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
+from flask import abort
+
+# Telegram webhook handler
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    update = request.get_json()
+
+    if not update:
+        return abort(400)
+
+    if "message" in update and "text" in update["message"]:
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"]["text"]
+
+        if text == "/start":
+            send_message(chat_id, "ðŸ‘‹ Hello! I'm alive and online!")
+
+    return jsonify({"ok": True})
+
+
+# Set the Telegram webhook on first request
+@app.before_first_request
+def set_webhook():
+    webhook_url = f"https://{request.host}/{BOT_TOKEN}"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    try:
+        res = requests.post(url, data={"url": webhook_url})
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"âœ… Webhook set: {webhook_url}")
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"âŒ Failed to set webhook: {e}")
