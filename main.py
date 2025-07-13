@@ -14,7 +14,7 @@ from handlers import process_update
 
 app = Flask(__name__)
 
-start_time = time.time()
+start_time = time.time()  # Global start_time for /health command
 is_shutting_down = False
 
 @app.route("/", methods=["GET"])
