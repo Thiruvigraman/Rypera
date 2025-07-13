@@ -65,5 +65,5 @@ A private Telegram bot for managing and sharing movie files efficiently. Built w
   <li><strong>Framework:</strong> Flask</li>
   <li><strong>Database:</strong> MongoDB Atlas</li>
   <li><strong>Hosting:</strong> Render</li>
-  <li><strong>Logging:</strong> Discord Webhooks (Blue, Green, and Red embeds for actions)</li>
+  <li><strong>Logging:</strong> Discord Webhooks </li>
 </ul>
