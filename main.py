@@ -4,6 +4,8 @@ import atexit
 import os
 import signal
 import time
+import traceback
+import psutil  # Add for resource monitoring
 from flask import Flask, request, jsonify
 from telegram import cleanup_pending_files
 from discord import log_to_discord
@@ -21,7 +23,15 @@ def home():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "healthy", "uptime": time.time() - start_time})
+    try:
+        # Get CPU and memory usage
+        process = psutil.Process()
+        mem = process.memory_info().rss / 1024 / 1024  # MB
+        cpu = process.cpu_percent(interval=0.1)
+        return jsonify({"status": "healthy", "uptime": time.time() - start_time, "memory_mb": mem, "cpu_percent": cpu})
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health check error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
@@ -31,7 +41,7 @@ def handle_webhook():
             process_update(update)
         return jsonify(success=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in webhook: {e}")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/shutdown', methods=['POST'])
@@ -46,14 +56,23 @@ def shutdown():
 
 # On startup
 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now online! (PID: {os.getpid()})")
-cleanup_pending_files()
+try:
+    cleanup_pending_files()
+except Exception as e:
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Startup cleanup error: {e}\n{traceback.format_exc()}")
 
 # On exit
 def on_exit():
     if is_shutting_down:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now offline (intentional shutdown, PID: {os.getpid()}).")
     else:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}).")
+        try:
+            process = psutil.Process()
+            mem = process.memory_info().rss / 1024 / 1024  # MB
+            cpu = process.cpu_percent(interval=0.1)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)")
+        except:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()})")
 
 def handle_shutdown(signum, frame):
     global is_shutting_down
