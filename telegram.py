@@ -35,3 +35,17 @@ def delete_message(chat_id, message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
     payload = {'chat_id': chat_id, 'message_id': message_id}
     requests.post(url, json=payload)
+
+def send_announcement(user_ids, message, parse_mode=None):
+    """Send an announcement to all specified user IDs."""
+    success_count = 0
+    failed_count = 0
+    for user_id in user_ids:
+        try:
+            send_message(user_id, message, parse_mode)
+            success_count += 1
+        except Exception as e:
+            failed_count += 1
+            # Optionally log failed attempts to Discord (requires importing log_to_discord)
+            # log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send announcement to {user_id}: {e}")
+    return success_count, failed_count
