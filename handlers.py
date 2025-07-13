@@ -8,7 +8,6 @@ from discord import log_to_discord
 TEMP_FILE_IDS = {}
 
 def get_user_display_name(user):
-    """Extract a display name from the user object."""
     username = user.get('username')
     if username:
         return f"@{username}"
@@ -22,24 +21,21 @@ def process_update(update):
 
     chat_id = update['message']['chat']['id']
     user_id = update['message']['from']['id']
-    user = update['message']['from']  # Get user object for name
+    user = update['message']['from']
     text = update['message'].get('text', '')
     document = update['message'].get('document')
     video = update['message'].get('video')
 
-    # Store user ID and display name for any non-admin interaction
     if user_id != ADMIN_ID:
         display_name = get_user_display_name(user)
         add_user(user_id, display_name)
 
-    # Admin uploading file
     if (document or video) and user_id == ADMIN_ID:
         file_id = document['file_id'] if document else video['file_id']
         TEMP_FILE_IDS[chat_id] = file_id
         send_message(chat_id, "Send the name of this movie to store it:")
         return
 
-    # Admin naming movie
     if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
         save_movie(text, TEMP_FILE_IDS[chat_id])
         send_message(chat_id, f"Movie '{text}' has been added.")
@@ -47,14 +43,12 @@ def process_update(update):
         del TEMP_FILE_IDS[chat_id]
         return
 
-    # List files
     if text == '/list_files' and user_id == ADMIN_ID:
         movies = load_movies()
         msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored."
         send_message(chat_id, msg)
         return
 
-    # Rename file
     if text.startswith('/rename_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=2)
         if len(parts) < 3:
@@ -68,7 +62,6 @@ def process_update(update):
                 send_message(chat_id, f"Movie '{old_name}' not found.")
         return
 
-    # Delete file
     if text.startswith('/delete_file') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -80,7 +73,6 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}")
         return
 
-    # Generate movie link
     if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -97,14 +89,12 @@ def process_update(update):
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
 
-    # Stats command
     if text == '/stats' and user_id == ADMIN_ID:
         stats = get_stats()
         msg = f"📊 Bot Statistics:\nTotal Movies: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
         send_message(chat_id, msg)
         return
 
-    # Announce command
     if text.startswith('/announce') and user_id == ADMIN_ID:
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -124,7 +114,6 @@ def process_update(update):
         log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {success_count} users, failed for {failed_count} users")
         return
 
-    # User clicking movie link
     if text.startswith('/start '):
         movie_name = text.replace('/start ', '').replace('_', ' ')
         movies = load_movies()
