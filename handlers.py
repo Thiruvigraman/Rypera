@@ -1,7 +1,7 @@
 # handlers.py
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
-from database import load_movies, save_movie, delete_movie, rename_movie
-from telegram import send_message, send_file
+from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats
+from telegram import send_message, send_file, send_announcement
 from discord import log_to_discord
 
 TEMP_FILE_IDS = {}
@@ -15,6 +15,10 @@ def process_update(update):
     text = update['message'].get('text', '')
     document = update['message'].get('document')
     video = update['message'].get('video')
+
+    # Store user ID for any interaction (except admin)
+    if user_id != ADMIN_ID:
+        add_user(user_id)
 
     # Admin uploading file
     if (document or video) and user_id == ADMIN_ID:
@@ -79,6 +83,32 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}")
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
+        return
+
+    # Stats command
+    if text == '/stats' and user_id == ADMIN_ID:
+        stats = get_stats()
+        msg = f"📊 Bot Statistics:\nTotal Movies: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
+        send_message(chat_id, msg)
+        return
+
+    # Announce command
+    if text.startswith('/announce') and user_id == ADMIN_ID:
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            send_message(chat_id, "Usage: /announce Your announcement message")
+            return
+        announcement = parts[1]
+        user_ids = get_all_users()
+        if not user_ids:
+            send_message(chat_id, "No users to announce to.")
+            return
+        success_count, failed_count = send_announcement(user_ids, announcement, parse_mode="Markdown")
+        send_message(
+            chat_id,
+            f"📢 Announcement sent!\nSuccess: {success_count} users\nFailed: {failed_count} users",
+        )
+        log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {success_count} users, failed for {failed_count} users")
         return
 
     # User clicking movie link
