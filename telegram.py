@@ -1,7 +1,10 @@
 # telegram.py
+
 import requests
 import threading
+import time
 from config import BOT_TOKEN
+from database import save_sent_file, delete_sent_file_record
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -22,30 +25,28 @@ def send_file(chat_id, file_id):
 
         warning_text = (
             "❗️ *IMPORTANT* ❗️\n\n"
-            "This Video / File Will Be Deleted In *30 minutes* _(Due To Copyright Issues)_\n\n"
+            "This Video / File Will Be Deleted In *15 minutes* _(Due To Copyright Issues)_\n\n"
             "📌 *Please Forward This Video / File To Somewhere Else And Start Downloading There.*"
         )
         warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
         warning_message_id = warning_response['result']['message_id']
 
-        threading.Timer(1800, delete_message, args=[chat_id, file_message_id]).start()
-        threading.Timer(1800, delete_message, args=[chat_id, warning_message_id]).start()
+        # Store sent file metadata in MongoDB
+        save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
 
-def delete_message(chat_id, message_id):
+        # Schedule deletion after 15 minutes
+        threading.Timer(900, delete_messages, args=[chat_id, file_message_id, warning_message_id]).start()
+
+def delete_messages(chat_id, file_message_id, warning_message_id):
+    """Delete file and warning messages and remove from MongoDB."""
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
-    payload = {'chat_id': chat_id, 'message_id': message_id}
-    requests.post(url, json=payload)
+    for message_id in [file_message_id, warning_message_id]:
+        payload = {'chat_id': chat_id, 'message_id': message_id}
+        requests.post(url, json=payload)
+    delete_sent_file_record(chat_id, file_message_id)
 
-def send_announcement(user_ids, message, parse_mode=None):
-    """Send an announcement to all specified user IDs."""
-    success_count = 0
-    failed_count = 0
-    for user_id in user_ids:
-        try:
-            send_message(user_id, message, parse_mode)
-            success_count += 1
-        except Exception as e:
-            failed_count += 1
-            # Optionally log failed attempts to Discord (requires importing log_to_discord)
-            # log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send announcement to {user_id}: {e}")
-    return success_count, failed_count
+def cleanup_pending_files():
+    """Delete files sent within the last 15 minutes on startup."""
+    pending_files = get_pending_files(expiry_minutes=15)
+    for file_data in pending_files:
+        delete_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
