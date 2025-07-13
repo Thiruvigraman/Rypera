@@ -4,6 +4,8 @@ from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WE
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats
 from telegram import send_message, send_file, send_announcement
 from discord import log_to_discord
+import time
+import psutil  # Add for /health command
 
 TEMP_FILE_IDS = {}
 
@@ -93,6 +95,26 @@ def process_update(update):
         stats = get_stats()
         msg = f"📊 Bot Statistics:\nTotal Movies: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
         send_message(chat_id, msg)
+        return
+
+    if text == '/health' and user_id == ADMIN_ID:
+        try:
+            process = psutil.Process()
+            mem = process.memory_info().rss / 1024 / 1024  # MB
+            cpu = process.cpu_percent(interval=0.1)
+            uptime = time.time() - start_time
+            uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
+            msg = (
+                f"🩺 *Bot Health Check*\n\n"
+                f"*Uptime*: {uptime_str}\n"
+                f"*Memory Usage*: {mem:.2f} MB\n"
+                f"*CPU Usage*: {cpu:.2f}%"
+            )
+            send_message(chat_id, msg, parse_mode="Markdown")
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%", log_type='list_logs')
+        except Exception as e:
+            send_message(chat_id, f"Error checking health: {e}")
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}", log_type='list_logs')
         return
 
     if text.startswith('/announce') and user_id == ADMIN_ID:
