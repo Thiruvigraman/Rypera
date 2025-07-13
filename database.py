@@ -1,4 +1,5 @@
 # database.py
+
 from pymongo import MongoClient
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
 from discord import log_to_discord
@@ -9,7 +10,8 @@ try:
     client.server_info()  # Force connection to test
     db = client['telegram_bot']
     movies_collection = db['movies']
-    users_collection = db['users']  # New collection for users
+    users_collection = db['users']
+    sent_files_collection = db['sent_files']  # New collection for sent files
     log_to_discord(DISCORD_WEBHOOK_STATUS, "✅ MongoDB connected successfully.")
 except Exception as e:
     log_to_discord(DISCORD_WEBHOOK_STATUS, f"❌ Failed to connect to MongoDB: {e}")
@@ -35,9 +37,13 @@ def rename_movie(old_name, new_name):
         return True
     return False
 
-def add_user(user_id):
-    """Add a user ID to the users collection if not already present."""
-    users_collection.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
+def add_user(user_id, display_name):
+    """Add a user ID and display name to the users collection."""
+    users_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "display_name": display_name}},
+        upsert=True
+    )
 
 def get_all_users():
     """Retrieve all user IDs from the users collection."""
@@ -48,3 +54,22 @@ def get_stats():
     movie_count = movies_collection.count_documents({})
     user_count = users_collection.count_documents({})
     return {"movie_count": movie_count, "user_count": user_count}
+
+def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
+    """Store metadata of a sent file for deletion tracking."""
+    sent_files_collection.insert_one({
+        "chat_id": chat_id,
+        "file_message_id": file_message_id,
+        "warning_message_id": warning_message_id,
+        "timestamp": timestamp
+    })
+
+def get_pending_files(expiry_minutes=15):
+    """Retrieve sent files that are still within the expiry window."""
+    import time
+    cutoff = time.time() - (expiry_minutes * 60)
+    return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
+
+def delete_sent_file_record(chat_id, file_message_id):
+    """Remove a sent file record after deletion."""
+    sent_files_collection.delete_one({"chat_id": chat_id, "file_message_id": file_message_id})
