@@ -1,4 +1,5 @@
 # handlers.py
+
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats
 from telegram import send_message, send_file, send_announcement
@@ -6,17 +7,27 @@ from discord import log_to_discord
 
 TEMP_FILE_IDS = {}
 
+def get_user_display_name(user):
+    """Extract a display name from the user object."""
+    username = user.get('username')
+    if username:
+        return f"@{username}"
+    first_name = user.get('first_name', '')
+    last_name = user.get('last_name', '')
+    return f"{first_name} {last_name}".strip() or "Unknown User"
+
 def process_update(update):
     if 'message' not in update:
         return
 
     chat_id = update['message']['chat']['id']
     user_id = update['message']['from']['id']
+    user = update['message']['from']  # Get user object for name
     text = update['message'].get('text', '')
     document = update['message'].get('document')
     video = update['message'].get('video')
 
-    # Store user ID for any interaction (except admin)
+    # Store user ID for any non-admin interaction
     if user_id != ADMIN_ID:
         add_user(user_id)
 
@@ -116,8 +127,9 @@ def process_update(update):
         movie_name = text.replace('/start ', '').replace('_', ' ')
         movies = load_movies()
         if movie_name in movies and 'file_id' in movies[movie_name]:
+            display_name = get_user_display_name(user)
             send_file(chat_id, movies[movie_name]['file_id'])
-            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{user_id} accessed movie: {movie_name}")
+            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}")
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
         return
