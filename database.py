@@ -12,7 +12,6 @@ try:
     movies_collection = db['movies']
     users_collection = db['users']
     sent_files_collection = db['sent_files']  # New collection for sent files
-    # Create indexes for efficient queries
     sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
     users_collection.create_index([("user_id", 1)], unique=True)
     log_to_discord(DISCORD_WEBHOOK_STATUS, "MongoDB connected successfully.")
