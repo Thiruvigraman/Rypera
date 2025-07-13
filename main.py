@@ -1,10 +1,12 @@
 # main.py
+
 import atexit
 import os
 import signal
 import time
 from flask import Flask, request, jsonify
 from handlers import process_update
+from telegram import cleanup_pending_files
 from discord import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 
@@ -27,7 +29,8 @@ def health():
 def handle_webhook():
     try:
         update = request.get_json()
-        process_update(update)
+)if update:
+            process_update(update)
         return jsonify(success=True)
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in webhook: {e}")
@@ -46,6 +49,7 @@ def shutdown():
 
 # On startup
 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now online! (PID: {os.getpid()})")
+cleanup_pending_files()  # Clean up pending files from previous sessions
 
 # On exit
 def on_exit():
