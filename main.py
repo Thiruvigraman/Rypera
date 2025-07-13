@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 from telegram import cleanup_pending_files
 from discord import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
-from handlers import process_update  # Moved to end to avoid circular import
+from handlers import process_update
 
 app = Flask(__name__)
 
