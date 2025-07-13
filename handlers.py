@@ -27,9 +27,10 @@ def process_update(update):
     document = update['message'].get('document')
     video = update['message'].get('video')
 
-    # Store user ID for any non-admin interaction
+    # Store user ID and display name for any non-admin interaction
     if user_id != ADMIN_ID:
-        add_user(user_id)
+        display_name = get_user_display_name(user)
+        add_user(user_id, display_name)
 
     # Admin uploading file
     if (document or video) and user_id == ADMIN_ID:
@@ -110,10 +111,11 @@ def process_update(update):
             send_message(chat_id, "Usage: /announce Your announcement message")
             return
         announcement = parts[1]
-        user_ids = get_all_users()
-        if not user_ids:
+        users = get_all_users()
+        if not users:
             send_message(chat_id, "No users to announce to.")
             return
+        user_ids = [user['user_id'] for user in users]
         success_count, failed_count = send_announcement(user_ids, announcement, parse_mode="Markdown")
         send_message(
             chat_id,
