@@ -1,21 +1,28 @@
 # main.py
 import atexit
 import os
+import signal
+import time
 from flask import Flask, request, jsonify
 from handlers import process_update
 from discord import log_to_discord
-from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN
+from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 
 app = Flask(__name__)
 
-# Flag to track intentional shutdown
+# Track start time and shutdown state
+start_time = time.time()
 is_shutting_down = False
 
 @app.route("/", methods=["GET"])
 def home():
     return "Bot is running!", 200
 
-# Webhook Endpoint
+@app.route("/health", methods=["GET"])
+def health():
+    """Health check endpoint for monitoring services like BetterStack/Uptime Robot."""
+    return jsonify({"status": "healthy", "uptime": time.time() - start_time})
+
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def handle_webhook():
     try:
@@ -26,30 +33,38 @@ def handle_webhook():
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in webhook: {e}")
         return jsonify({"error": str(e)}), 500
 
-# On startup
-log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now online!")
-
-# On exit
-def on_exit():
-    if is_shutting_down:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is now offline (intentional shutdown).")
-    else:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot process terminated unexpectedly.")
-
-# Register the exit handler
-atexit.register(on_exit)
-
-# Optional: Add a shutdown endpoint for intentional shutdown (for admin use)
+# Shutdown endpoint for intentional shutdown (optional, for admin)
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
-    global is_shutting_down
-    if request.json.get('admin_id') == str(ADMIN_ID):  # Ensure only admin can trigger
+    if request.json.get('admin_id') == str(ADMIN_ID):
+        global is_shutting_down
         is_shutting_down = True
         log_to_discord(DISCORD_WEBHOOK_STATUS, "Shutdown initiated by admin.")
-        # Gracefully terminate the process
         os._exit(0)
         return jsonify({"status": "Shutting down"})
     return jsonify({"error": "Unauthorized"}), 403
 
+# On startup
+log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now online! (PID: {os.getpid()})")
+
+# On exit
+def on_exit():
+    if is_shutting_down:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now offline (intentional shutdown, PID: {os.getpid()}).")
+    else:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}).")
+
+# Signal handlers for graceful shutdown
+def handle_shutdown(signum, frame):
+    global is_shutting_down
+    is_shutting_down = True
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal ({signum}, PID: {os.getpid()}).")
+    os._exit(0)
+
+# Register handlers
+atexit.register(on_exit)
+signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), use_reloader=False)
