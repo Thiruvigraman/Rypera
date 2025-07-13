@@ -1,28 +1,38 @@
-# 🎬 Telegram Movie Bot
+🎬 Telegram Movie Bot
 
-This is a Telegram bot that automates movie file sharing using MongoDB and Flask. Designed for Terabox and Telegram workflows, this bot allows admins to manage movies, generate file links, and auto-delete sent files after 30 minutes.
+A private Telegram bot built for streamlined movie sharing and management using MongoDB, Flask, and Discord logging. Hosted on Render, this bot is designed for personal use with admin-only controls, automated cleanup, and real-time activity monitoring.
 
----
-
-## 🚀 Features
-
-✅ Auto-detects and stores movie uploads from a private channel  
-✅ Sends movie files only when a user clicks a link from the main channel  
-✅ Automatically deletes sent movie files after 30 minutes (anti-copyright)  
-✅ Admin-only access for uploading, editing, or deleting movies  
-✅ MongoDB Atlas used to store movie metadata  
-✅ Logs activity to Discord via webhooks  
-✅ Flask-based server, deployable 24/7 on Render or Replit  
 
 ---
 
-## 🛠️ Admin Commands
+🚀 Features
 
-| Command                    | Description                            |
-|----------------------------|----------------------------------------|
-| Upload a movie file + name | Saves file message ID to MongoDB      |
-| `/list_files`              | Lists all uploaded movies              |
-| `/rename_file old new`     | Renames a movie                        |
-| `/delete_file name`        | Deletes a movie entry                  |
-| `/get_movie_link name`     | Generates clickable movie link         |
+✅ Upload and manage movie files stored in MongoDB
+✅ Generate private access links via /start Movie_Name
+✅ Automatically delete sent files after 15 minutes
+✅ Cleans up messages after restarts (post-restart cleanup)
+✅ Logs movie access with usernames to Discord (blue embed)
+✅ Logs admin actions like upload, delete, and rename (green embed)
+✅ Logs bot status and crashes (red embed)
+✅ Health check with uptime, memory, and CPU usage
+✅ Broadcast announcements to all users with rate-limiting
 
+
+---
+
+🛠️ Admin Commands
+
+Command	Description
+
+Upload + Name	Upload a file and assign a movie name
+/list_files	Lists all stored movies
+/rename_file <old> <new>	Renames a movie
+/delete_file <name>	Deletes a movie
+/get_movie_link <name>	Generates a shareable movie link
+/health	Shows bot uptime, memory, and CPU usage
+/stats	Displays total movie and user count
+/announce <message>	Sends a message to all users
+
+
+
+---
