@@ -34,15 +34,12 @@ def send_file(chat_id, file_id):
         warning_message_id = warning_response.get('result', {}).get('message_id')
 
         if warning_message_id:
-            # Store sent file metadata in MongoDB
             save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-            # Schedule deletion after 15 minutes
             threading.Timer(900, delete_messages, args=[chat_id, file_message_id, warning_message_id]).start()
         else:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send warning message for chat_id: {chat_id}")
 
 def delete_messages(chat_id, file_message_id, warning_message_id):
-    """Delete file and warning messages and remove from MongoDB."""
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
     for message_id in [file_message_id, warning_message_id]:
         try:
@@ -53,7 +50,6 @@ def delete_messages(chat_id, file_message_id, warning_message_id):
     delete_sent_file_record(chat_id, file_message_id)
 
 def cleanup_pending_files():
-    """Delete files sent within the last 15 minutes on startup."""
     pending_files = get_pending_files(expiry_minutes=15)
     for file_data in pending_files:
         try:
@@ -61,3 +57,15 @@ def cleanup_pending_files():
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']} on startup")
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {e}")
+
+def send_announcement(user_ids, message, parse_mode=None):
+    success_count = 0
+    failed_count = 0
+    for user_id in user_ids:
+        try:
+            send_message(user_id, message, parse_mode)
+            success_count += 1
+            time.sleep(0.1)  # Avoid Telegram rate limits
+        except Exception:
+            failed_count += 1
+    return success_count, failed_count
