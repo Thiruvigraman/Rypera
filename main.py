@@ -29,7 +29,7 @@ def health():
 def handle_webhook():
     try:
         update = request.get_json()
-)if update:
+        if update:
             process_update(update)
         return jsonify(success=True)
     except Exception as e:
