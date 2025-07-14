@@ -5,7 +5,8 @@ from database import load_movies, save_movie, delete_movie, rename_movie, add_us
 from telegram import send_message, send_file, send_announcement
 from discord import log_to_discord
 import time
-import psutil  # Add for /health command
+import psutil  # For /health command
+from main import start_time  # Import start_time
 
 TEMP_FILE_IDS = {}
 
