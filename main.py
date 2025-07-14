@@ -6,7 +6,7 @@ import signal
 import time
 import traceback
 import psutil
-import logging  # Add for Render logging
+import logging
 from flask import Flask, request, jsonify
 from telegram import cleanup_pending_files
 from discord import log_to_discord
@@ -57,15 +57,15 @@ def shutdown():
     if request.json.get('admin_id') == str(ADMIN_ID):
         global is_shutting_down
         is_shutting_down = True
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Shutdown initiated by admin.", log_type='status')
         logger.info("Shutdown initiated by admin")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "Shutdown initiated by admin.", log_type='status')
         os._exit(0)
         return jsonify({"status": "Shutting down"})
     return jsonify({"error": "Unauthorized"}), 403
 
 # On startup
+logger.info(f"Bot starting (PID: {os.getpid()})")
 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now online! (PID: {os.getpid()})", log_type='status')
-logger.info(f"Bot started (PID: {os.getpid()})")
 try:
     cleanup_pending_files()
 except Exception as e:
@@ -75,24 +75,24 @@ except Exception as e:
 # On exit
 def on_exit():
     if is_shutting_down:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now offline (intentional shutdown, PID: {os.getpid()}).", log_type='status')
         logger.info(f"Bot offline (intentional shutdown, PID: {os.getpid()})")
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot is now offline (intentional shutdown, PID: {os.getpid()}).", log_type='status')
     else:
         try:
             process = psutil.Process()
             mem = process.memory_info().rss / 1024 / 1024  # MB
             cpu = process.cpu_percent(interval=0.1)
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
             logger.error(f"Bot terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
         except:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()})", log_type='status')
             logger.error(f"Bot terminated unexpectedly (PID: {os.getpid()})")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()})", log_type='status')
 
 def handle_shutdown(signum, frame):
     global is_shutting_down
     is_shutting_down = True
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal ({signum}, PID: {os.getpid()}).", log_type='status')
     logger.info(f"Received shutdown signal ({signum}, PID: {os.getpid()})")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal ({signum}, PID: {os.getpid()}).", log_type='status')
     os._exit(0)
 
 atexit.register(on_exit)
