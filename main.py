@@ -14,7 +14,7 @@ from handlers import process_update
 
 app = Flask(__name__)
 
-start_time = time.time()  # Global start_time for /health command
+start_time = time.time()  # Global start_time for /health endpoint
 is_shutting_down = False
 
 @app.route("/", methods=["GET"])
@@ -29,7 +29,7 @@ def health():
         cpu = process.cpu_percent(interval=0.1)
         return jsonify({"status": "healthy", "uptime": time.time() - start_time, "memory_mb": mem, "cpu_percent": cpu})
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health check error: {e}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health endpoint error: {e}\n{traceback.format_exc()}", log_type='status')
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
@@ -40,7 +40,8 @@ def handle_webhook():
             process_update(update)
         return jsonify(success=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook error: {e}\n{traceback.format_exc()}", log_type='status')
+        error_msg = f"Webhook error: {e}\n{traceback.format_exc()}"
+        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status')
         return jsonify({"error": str(e)}), 500
 
 @app.route('/shutdown', methods=['POST'])
