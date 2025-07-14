@@ -1,12 +1,40 @@
 # config.py
 
-MONGODB_URI = "your_mongodb_uri"  # Replace with your MongoDB Atlas URI
-BOT_TOKEN = "your_bot_token"  # Replace with your Telegram bot token
-ADMIN_ID = 123456789  # Replace with your Telegram user ID
-BOT_USERNAME = "your_bot_username"  # Replace with @YourBotUsername
-DISCORD_WEBHOOK_STATUS = "https://discord.com/api/webhooks/1357644159888003237/..."
-DISCORD_WEBHOOK_LIST_LOGS = "https://discord.com/api/webhooks/1357644530136125603/..."
-DISCORD_WEBHOOK_FILE_ACCESS = "https://discord.com/api/webhooks/1357644928016191549/..."
+import os
+import logging
+
+# Configure logging to Render logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+MONGODB_URI = os.getenv('MONGODB_URI')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_ID = os.getenv('ADMIN_ID')
+BOT_USERNAME = os.getenv('BOT_USERNAME', '@YourBot')  # Default for safety
+DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
+DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
+DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
+
+# Validate environment variables
+if not MONGODB_URI:
+    logger.error("MONGODB_URI environment variable is missing")
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN environment variable is missing")
+if not ADMIN_ID:
+    logger.error("ADMIN_ID environment variable is missing")
+else:
+    try:
+        ADMIN_ID = int(ADMIN_ID)  # Convert to integer
+    except ValueError:
+        logger.error("ADMIN_ID must be a valid integer")
+        ADMIN_ID = None
+if not DISCORD_WEBHOOK_STATUS:
+    logger.error("DISCORD_WEBHOOK_STATUS environment variable is missing")
+if not DISCORD_WEBHOOK_LIST_LOGS:
+    logger.error("DISCORD_WEBHOOK_LIST_LOGS environment variable is missing")
+if not DISCORD_WEBHOOK_FILE_ACCESS:
+    logger.error("DISCORD_WEBHOOK_FILE_ACCESS environment variable is missing")
 
 EMBED_CONFIG = {
     'default': {
