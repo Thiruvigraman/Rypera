@@ -2,7 +2,7 @@
 
 import requests
 import time
-from config import EMBED_CONFIG
+from config import DISCORD_WEBHOOK_STATUS, EMBED_CONFIG
 
 last_log_time = 0
 log_interval = 10  # Minimum seconds between logs
@@ -26,8 +26,30 @@ def log_to_discord(webhook, message, log_type='default'):
             if 'title' in config:
                 embed['title'] = config['title']
                 
-            requests.post(webhook, json={'embeds': [embed]})
+            response = requests.post(webhook, json={'embeds': [embed]})
             last_log_time = current_time
+            # Log failure details to DISCORD_WEBHOOK_STATUS (if not the same webhook)
+            if response.status_code != 204:
+                error_msg = f"Failed to send Discord log to {webhook}: Status {response.status_code}, Response: {response.text}"
+                if webhook != DISCORD_WEBHOOK_STATUS:
+                    requests.post(DISCORD_WEBHOOK_STATUS, json={
+                        'embeds': [{
+                            'description': error_msg[:4096],
+                            'color': 0xFF0000,
+                            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+                        }]
+                    })
         except Exception as e:
-            # Silently fail to avoid crashing
-            pass
+            # Log error to DISCORD_WEBHOOK_STATUS (if not the same webhook)
+            error_msg = f"Error sending Discord log to {webhook}: {e}"
+            if webhook != DISCORD_WEBHOOK_STATUS:
+                try:
+                    requests.post(DISCORD_WEBHOOK_STATUS, json={
+                        'embeds': [{
+                            'description': error_msg[:4096],
+                            'color': 0xFF0000,
+                            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+                        }]
+                    })
+                except:
+                    pass  # Avoid infinite loop if status webhook fails
