@@ -1,9 +1,10 @@
  #discord_webhook.py
 
 import os
+import time  # Added import
 import requests
 from ratelimit import limits, sleep_and_retry
-from telegram import Update  # Correct import
+from telegram import Update
 from config import EMBED_CONFIG
 
 CALLS = 30
@@ -42,7 +43,6 @@ def log_to_discord(update: Update = None, message: str = None, log_type: str = '
         'file_access': os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
     }.get(log_type, os.getenv('DISCORD_WEBHOOK_STATUS'))
 
-    # Create embed using EMBED_CONFIG
     config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
     embed = {
         "title": config.get('title', 'Bot Log'),
@@ -53,7 +53,7 @@ def log_to_discord(update: Update = None, message: str = None, log_type: str = '
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
     }
 
-    if update and log_type != 'status':  # Add username for non-status logs
+    if update and log_type != 'status':
         username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
         embed["description"] = f"[{username}]: {message}"
 
