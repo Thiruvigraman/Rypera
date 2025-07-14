@@ -7,11 +7,6 @@ from discord import log_to_discord
 import time
 import psutil
 import traceback
-import logging
-
-# Configure logging to Render logs
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 TEMP_FILE_IDS = {}
 
@@ -48,8 +43,7 @@ def process_update(update):
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
             send_message(chat_id, f"Movie '{text}' has been added.")
-            logger.info(f"Sending Discord log for movie added: {text}")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}", log_type='list_logs')
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Movie added: {text}", log_type='list_logs')
             del TEMP_FILE_IDS[chat_id]
             return
 
@@ -67,8 +61,7 @@ def process_update(update):
                 _, old_name, new_name = parts
                 if rename_movie(old_name, new_name):
                     send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
-                    logger.info(f"Sending Discord log for rename: {old_name} to {new_name}")
-                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'", log_type='list_logs')
+                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Renamed '{old_name}' to '{new_name}'", log_type='list_logs')
                 else:
                     send_message(chat_id, f"Movie '{old_name}' not found.")
             return
@@ -81,8 +74,7 @@ def process_update(update):
                 file_name = parts[1]
                 delete_movie(file_name)
                 send_message(chat_id, f"Deleted '{file_name}'.")
-                logger.info(f"Sending Discord log for delete: {file_name}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}", log_type='list_logs')
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Deleted movie: {file_name}", log_type='list_logs')
             return
 
         if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
@@ -96,8 +88,7 @@ def process_update(update):
                 safe_name = movie_name.replace(" ", "_")
                 movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
                 send_message(chat_id, f"Click here to get the movie: {movie_link}")
-                logger.info(f"Sending Discord log for link: {movie_name}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}", log_type='list_logs')
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Generated link for: {movie_name}", log_type='list_logs')
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
             return
@@ -116,8 +107,9 @@ def process_update(update):
                 process_start_time = process.create_time()
                 uptime = time.time() - process_start_time
                 uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
+                # Get MongoDB storage stats
                 db_stats = db.command("dbStats")
-                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024
+                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024  # Convert bytes to MB
                 storage_total_mb = 512  # MongoDB Atlas M0 limit
                 msg = (
                     f"🩺 *Bot Health Check*\n\n"
@@ -128,16 +120,14 @@ def process_update(update):
                     f"*MongoDB Storage Total*: {storage_total_mb:.2f} MB"
                 )
                 send_message(chat_id, msg, parse_mode="Markdown")
-                logger.info(f"Sending Discord log for health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB")
                 log_to_discord(
                     DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
-                    log_type='health'
+                    f"Attempting to log: Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
+                    log_type='list_logs'
                 )
             except Exception as e:
                 send_message(chat_id, f"Error checking health: {e}")
-                logger.error(f"Health check error: {e}\n{traceback.format_exc()}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}\n{traceback.format_exc()}", log_type='health')
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Health check error: {e}\n{traceback.format_exc()}", log_type='list_logs')
             return
 
         if text.startswith('/announce') and user_id == ADMIN_ID:
@@ -156,8 +146,7 @@ def process_update(update):
                 chat_id,
                 f"📢 Announcement sent!\nSuccess: {success_count} users\nFailed: {failed_count} users",
             )
-            logger.info(f"Sending Discord log for announcement: Success {success_count}, Failed {failed_count}")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {success_count} users, failed for {failed_count} users", log_type='list_logs')
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Announcement sent to {success_count} users, failed for {failed_count} users", log_type='list_logs')
             return
 
         if text.startswith('/start '):
@@ -166,17 +155,10 @@ def process_update(update):
             if movie_name in movies and 'file_id' in movies[movie_name]:
                 display_name = get_user_display_name(user)
                 send_file(chat_id, movies[movie_name]['file_id'])
-                db['sent_files'].insert_one({
-                    "user_id": user_id,
-                    "movie_name": movie_name,
-                    "timestamp": time.time()
-                })
-                logger.info(f"Sending Discord log for file access: {display_name} (ID: {user_id}) accessed {movie_name}")
-                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
+                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Attempting to log: {display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
             return
     except Exception as e:
-        logger.error(f"Error in process_update: {e}\n{traceback.format_exc()}")
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
-        raise
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Attempting to log: Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
+        raise  # Re-raise to trigger 500 error logging in main.py
