@@ -116,9 +116,8 @@ def process_update(update):
                 process_start_time = process.create_time()
                 uptime = time.time() - process_start_time
                 uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
-                # Get MongoDB storage stats
                 db_stats = db.command("dbStats")
-                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024  # Convert bytes to MB
+                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024
                 storage_total_mb = 512  # MongoDB Atlas M0 limit
                 msg = (
                     f"🩺 *Bot Health Check*\n\n"
@@ -132,13 +131,13 @@ def process_update(update):
                 logger.info(f"Sending Discord log for health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB")
                 log_to_discord(
                     DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
-                    log_type='list_logs'
+                    f"Health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
+                    log_type='health'
                 )
             except Exception as e:
                 send_message(chat_id, f"Error checking health: {e}")
                 logger.error(f"Health check error: {e}\n{traceback.format_exc()}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}\n{traceback.format_exc()}", log_type='list_logs')
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}\n{traceback.format_exc()}", log_type='health')
             return
 
         if text.startswith('/announce') and user_id == ADMIN_ID:
@@ -167,6 +166,11 @@ def process_update(update):
             if movie_name in movies and 'file_id' in movies[movie_name]:
                 display_name = get_user_display_name(user)
                 send_file(chat_id, movies[movie_name]['file_id'])
+                db['sent_files'].insert_one({
+                    "user_id": user_id,
+                    "movie_name": movie_name,
+                    "timestamp": time.time()
+                })
                 logger.info(f"Sending Discord log for file access: {display_name} (ID: {user_id}) accessed {movie_name}")
                 log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
             else:
