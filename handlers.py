@@ -1,7 +1,7 @@
 # handlers.py
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
-from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats
+from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db  # Add db
 from telegram import send_message, send_file, send_announcement
 from discord import log_to_discord
 import time
@@ -102,18 +102,27 @@ def process_update(update):
             process = psutil.Process()
             mem = process.memory_info().rss / 1024 / 1024  # MB
             cpu = process.cpu_percent(interval=0.1)
-            # Use process creation time for uptime
             process_start_time = process.create_time()
             uptime = time.time() - process_start_time
             uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
+            # Get MongoDB storage stats
+            db_stats = db.command("dbStats")
+            storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024  # Convert bytes to MB
+            storage_total_mb = 512  # MongoDB Atlas M0 limit
             msg = (
                 f"🩺 *Bot Health Check*\n\n"
                 f"*Uptime*: {uptime_str}\n"
                 f"*Memory Usage*: {mem:.2f} MB\n"
-                f"*CPU Usage*: {cpu:.2f}%"
+                f"*CPU Usage*: {cpu:.2f}%\n"
+                f"*MongoDB Storage Used*: {storage_used_mb:.2f} MB\n"
+                f"*MongoDB Storage Total*: {storage_total_mb:.2f} MB"
             )
             send_message(chat_id, msg, parse_mode="Markdown")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%", log_type='list_logs')
+            log_to_discord(
+                DISCORD_WEBHOOK_LIST_LOGS,
+                f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
+                log_type='list_logs'
+            )
         except Exception as e:
             send_message(chat_id, f"Error checking health: {e}")
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}", log_type='list_logs')
@@ -143,7 +152,7 @@ def process_update(update):
         movies = load_movies()
         if movie_name in movies and 'file_id' in movies[movie_name]:
             display_name = get_user_display_name(user)
-            send_file(chat_id, movies[movie_name]['file_id'])
+            send_file(chat_id, movies[mobile_name]['file_id'])
             log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
         else:
             send_message(chat_id, f"Movie '{movie_name}' not found.")
