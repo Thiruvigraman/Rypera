@@ -3,7 +3,7 @@
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
 from telegram_bot import send_message, send_file, send_announcement
-from discord import log_to_discord
+from discord_webhook import log_to_discord
 import time
 import psutil
 import traceback
@@ -43,7 +43,7 @@ def process_update(update):
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
             send_message(chat_id, f"Movie '{text}' has been added.")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Movie added: {text}", log_type='list_logs')
+            log_to_discord(None, f"Movie added: {text}", log_type='list_logs')
             del TEMP_FILE_IDS[chat_id]
             return
 
@@ -61,7 +61,7 @@ def process_update(update):
                 _, old_name, new_name = parts
                 if rename_movie(old_name, new_name):
                     send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'.")
-                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Renamed '{old_name}' to '{new_name}'", log_type='list_logs')
+                    log_to_discord(None, f"Renamed '{old_name}' to '{new_name}'", log_type='list_logs')
                 else:
                     send_message(chat_id, f"Movie '{old_name}' not found.")
             return
@@ -74,7 +74,7 @@ def process_update(update):
                 file_name = parts[1]
                 delete_movie(file_name)
                 send_message(chat_id, f"Deleted '{file_name}'.")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Deleted movie: {file_name}", log_type='list_logs')
+                log_to_discord(None, f"Deleted movie: {file_name}", log_type='list_logs')
             return
 
         if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
@@ -88,7 +88,7 @@ def process_update(update):
                 safe_name = movie_name.replace(" ", "_")
                 movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
                 send_message(chat_id, f"Click here to get the movie: {movie_link}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Generated link for: {movie_name}", log_type='list_logs')
+                log_to_discord(None, f"Generated link for: {movie_name}", log_type='list_logs')
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
             return
@@ -107,10 +107,9 @@ def process_update(update):
                 process_start_time = process.create_time()
                 uptime = time.time() - process_start_time
                 uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
-                # Get MongoDB storage stats
                 db_stats = db.command("dbStats")
-                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024  # Convert bytes to MB
-                storage_total_mb = 512  # MongoDB Atlas M0 limit
+                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024
+                storage_total_mb = 512
                 msg = (
                     f"🩺 *Bot Health Check*\n\n"
                     f"*Uptime*: {uptime_str}\n"
@@ -121,13 +120,13 @@ def process_update(update):
                 )
                 send_message(chat_id, msg, parse_mode="Markdown")
                 log_to_discord(
-                    DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Attempting to log: Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
+                    None,
+                    f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
                     log_type='list_logs'
                 )
             except Exception as e:
                 send_message(chat_id, f"Error checking health: {e}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Health check error: {e}\n{traceback.format_exc()}", log_type='list_logs')
+                log_to_discord(None, f"Health check error: {e}\n{traceback.format_exc()}", log_type='list_logs')
             return
 
         if text.startswith('/announce') and user_id == ADMIN_ID:
@@ -146,7 +145,7 @@ def process_update(update):
                 chat_id,
                 f"📢 Announcement sent!\nSuccess: {success_count} users\nFailed: {failed_count} users",
             )
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Attempting to log: Announcement sent to {success_count} users, failed for {failed_count} users", log_type='list_logs')
+            log_to_discord(None, f"Announcement sent to {success_count} users, failed for {failed_count} users", log_type='list_logs')
             return
 
         if text.startswith('/start '):
@@ -155,10 +154,10 @@ def process_update(update):
             if movie_name in movies and 'file_id' in movies[movie_name]:
                 display_name = get_user_display_name(user)
                 send_file(chat_id, movies[movie_name]['file_id'])
-                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"Attempting to log: {display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
+                log_to_discord(None, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access')
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
             return
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Attempting to log: Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
-        raise  # Re-raise to trigger 500 error logging in main.py
+        log_to_discord(None, f"Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
+        raise
