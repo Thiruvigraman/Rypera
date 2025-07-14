@@ -1,55 +1,61 @@
-# discord.py
-
 import requests
+
 import time
-from config import DISCORD_WEBHOOK_STATUS, EMBED_CONFIG
+from ratelimit import limits, sleep_and_retry
+from telegram import Update
 
-last_log_time = 0
-log_interval = 10  # Minimum seconds between logs
+# Discord webhook URLs (loaded from environment variables)
+DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
+DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
+DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 
-def log_to_discord(webhook, message, log_type='default'):
-    global last_log_time
-    current_time = time.time()
-    if webhook and (current_time - last_log_time >= log_interval):
+# Rate limit: 30 calls per minute (Discord's limit)
+CALLS = 30
+RATE_LIMIT = 60
+
+@sleep_and_retry
+@limits(calls=CALLS, period=RATE_LIMIT)
+def send_to_discord(webhook_url, message):
+    """Send a message to a Discord webhook with rate limiting and retries."""
+    if not webhook_url:
+        print("Webhook URL not set!")
+        return
+
+    payload = {"content": message}
+    headers = {"Content-Type": "application/json"}
+
+    for attempt in range(3):  # Retry up to 3 times
         try:
-            # Get embed config based on log type
-            config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
-            default_config = EMBED_CONFIG['default']
-            
-            embed = {
-                'description': message[:4096],  # Discord embed description limit
-                'color': config.get('color', default_config.get('color', 0x7289DA)),
-                'author': {'name': config.get('author', default_config.get('author', 'Telegram Bot'))},
-                'footer': {'text': config.get('footer', default_config.get('footer', 'Powered by xAI'))},
-                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-            }
-            if 'title' in config:
-                embed['title'] = config['title']
-                
-            response = requests.post(webhook, json={'embeds': [embed]})
-            last_log_time = current_time
-            # Log failure details to DISCORD_WEBHOOK_STATUS (if not the same webhook)
-            if response.status_code != 204:
-                error_msg = f"Failed to send Discord log to {webhook}: Status {response.status_code}, Response: {response.text}"
-                if webhook != DISCORD_WEBHOOK_STATUS:
-                    requests.post(DISCORD_WEBHOOK_STATUS, json={
-                        'embeds': [{
-                            'description': error_msg[:4096],
-                            'color': 0xFF0000,
-                            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-                        }]
-                    })
+            response = requests.post(webhook_url, json=payload, headers=headers)
+            response.raise_for_status()  # Raise exception for bad status codes
+            print(f"Sent to Discord: {message}")
+            return
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429:
+                retry_after = int(response.json().get('retry_after', 1000)) / 1000
+                print(f"Rate limited, retrying after {retry_after}s")
+                time.sleep(retry_after)
+            else:
+                print(f"Failed to send to Discord: {e}")
+                break
         except Exception as e:
-            # Log error to DISCORD_WEBHOOK_STATUS (if not the same webhook)
-            error_msg = f"Error sending Discord log to {webhook}: {e}"
-            if webhook != DISCORD_WEBHOOK_STATUS:
-                try:
-                    requests.post(DISCORD_WEBHOOK_STATUS, json={
-                        'embeds': [{
-                            'description': error_msg[:4096],
-                            'color': 0xFF0000,
-                            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-                        }]
-                    })
-                except:
-                    pass  # Avoid infinite loop if status webhook fails
+            print(f"Error sending to Discord: {e}")
+            break
+
+def log_status(update: Update, message: str):
+    """Log status messages with username."""
+    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
+    formatted_message = f"[{username}]: {message}"
+    send_to_discord(DISCORD_WEBHOOK_STATUS, formatted_message)
+
+def log_file_access(update: Update, file_name: str):
+    """Log file access with username."""
+    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
+    formatted_message = f"[{username}] accessed file: {file_name}"
+    send_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, formatted_message)
+
+def log_list_command(update: Update, command: str):
+    """Log list command with username."""
+    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
+    formatted_message = f"[{username}] used command: {command}"
+    send_to_discord(DISCORD_WEBHOOK_LIST_LOGS, formatted_message)
