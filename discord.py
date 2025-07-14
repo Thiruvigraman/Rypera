@@ -18,6 +18,7 @@ global_interval = 1  # 1 second between any logs
 log_queue = deque(maxlen=100)  # Queue for failed logs
 
 def log_to_discord(webhook, message, log_type='default', max_retries=3):
+    global global_last_log  # Declare global variable
     logger.info(f"Attempting to send Discord log to {webhook}: {message[:100]}... (type: {log_type})")
     if not webhook:
         logger.error(f"Webhook URL is empty or None for log type {log_type}")
@@ -120,6 +121,7 @@ def queue_log(webhook, message, log_type):
 
 def process_log_queue():
     """Process queued logs if rate limits allow."""
+    global global_last_log  # Declare global variable
     current_time = time.time()
     while log_queue:
         webhook, message, log_type = log_queue[0]
