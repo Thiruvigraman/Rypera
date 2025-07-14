@@ -8,15 +8,15 @@ from discord import log_to_discord
 try:
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
     client.server_info()  # Force connection to test
-    db = client['telegram_bot']
+    db = client['telegram_bot']  # Expose db for handlers.py
     movies_collection = db['movies']
     users_collection = db['users']
-    sent_files_collection = db['sent_files']  # New collection for sent files
+    sent_files_collection = db['sent_files']
     sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
     users_collection.create_index([("user_id", 1)], unique=True)
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "MongoDB connected successfully.")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "MongoDB connected successfully.", log_type='status')
 except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {e}")
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {e}", log_type='status')
     raise e
 
 def load_movies():
