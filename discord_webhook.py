@@ -1,7 +1,7 @@
  #discord_webhook.py
 
 import os
-import time  # Added import
+import time
 import requests
 from ratelimit import limits, sleep_and_retry
 from telegram import Update
@@ -26,14 +26,18 @@ def send_to_discord(webhook_url, embed):
             return
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:
-                retry_after = int(response.json().get('retry_after', 1000)) / 1000
-                print(f"Rate limited, retrying after {retry_after}s")
-                time.sleep(retry_after)
+                try:
+                    retry_after = int(response.json().get('retry_after', 1000)) / 1000
+                    print(f"Rate limited, retrying after {retry_after}s")
+                    time.sleep(retry_after)
+                except requests.exceptions.JSONDecodeError as json_err:
+                    print(f"Failed to parse retry_after: {json_err}, response: {response.text}")
+                    time.sleep(1)  # Fallback delay
             else:
-                print(f"Failed to send to Discord: {e}")
+                print(f"Failed to send to Discord: {e}, status: {response.status_code}, response: {response.text}")
                 break
         except Exception as e:
-            print(f"Error sending to Discord: {e}")
+            print(f"Error sending to Discord: {e}, response: {response.text if 'response' in locals() else 'No response'}")
             break
 
 def log_to_discord(update: Update = None, message: str = None, log_type: str = 'status'):
