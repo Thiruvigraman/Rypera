@@ -2,7 +2,7 @@ import requests
 
 import time
 from ratelimit import limits, sleep_and_retry
-from telegram import Update
+from telegram_bot import Update
 
 # Discord webhook URLs (loaded from environment variables)
 DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
