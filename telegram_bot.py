@@ -2,10 +2,9 @@
 
 import requests
 import threading
-import time
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
-from database import save_sent_file, delete_sent_file_record, get_pending_files
-from discord_webhook import log_to_discord  # Changed from discord to discord_webhook
+from database import save_sent_file, delete_sent_file_record
+from discord_webhook import log_to_discord
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -47,16 +46,6 @@ def delete_messages(chat_id, file_message_id, warning_message_id):
             requests.post(url, json=payload)
         except Exception as e:
             log_to_discord(None, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
-    delete_sent_file_record(chat_id, file_message_id)
-
-def cleanup_pending_files():
-    pending_files = get_pending_files(expiry_minutes=15)
-    for file_data in pending_files:
-        try:
-            delete_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
-            log_to_discord(None, f"Cleaned up pending file in chat {file_data['chat_id']} on startup", log_type='status')
-        except Exception as e:
-            log_to_discord(None, f"Error cleaning up file in chat {file_data['chat_id']}: {e}", log_type='status')
 
 def send_announcement(user_ids, message, parse_mode=None):
     success_count = 0
