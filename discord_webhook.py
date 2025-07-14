@@ -3,29 +3,25 @@
 import os
 import requests
 from ratelimit import limits, sleep_and_retry
-from telegram import Update  # Correct import from python-telegram-bot
-
-# Discord webhook URLs from environment variables
-DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
-DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
-DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
+from telegram import Update  # Correct import
+from config import EMBED_CONFIG
 
 CALLS = 30
 RATE_LIMIT = 60
 
 @sleep_and_retry
 @limits(calls=CALLS, period=RATE_LIMIT)
-def send_to_discord(webhook_url, message):
+def send_to_discord(webhook_url, embed):
     if not webhook_url:
         print(f"Webhook URL not set for {webhook_url}!")
         return
-    payload = {"content": message}
+    payload = {"embeds": [embed]}
     headers = {"Content-Type": "application/json"}
     for attempt in range(3):
         try:
             response = requests.post(webhook_url, json=payload, headers=headers)
             response.raise_for_status()
-            print(f"Sent to Discord: {message}")
+            print(f"Sent to Discord: {embed['title']}")
             return
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:
@@ -40,14 +36,25 @@ def send_to_discord(webhook_url, message):
             break
 
 def log_to_discord(update: Update = None, message: str = None, log_type: str = 'status'):
-    if update:  # Handle cases where update is provided (e.g., for commands)
-        username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
-        formatted_message = f"[{username}]: {message}"
-    else:  # Handle cases without update (e.g., cleanup errors)
-        formatted_message = message
     webhook_url = {
-        'status': DISCORD_WEBHOOK_STATUS,
-        'list': DISCORD_WEBHOOK_LIST_LOGS,
-        'file': DISCORD_WEBHOOK_FILE_ACCESS
-    }.get(log_type, DISCORD_WEBHOOK_STATUS)
-    send_to_discord(webhook_url, formatted_message)
+        'status': os.getenv('DISCORD_WEBHOOK_STATUS'),
+        'list_logs': os.getenv('DISCORD_WEBHOOK_LIST_LOGS'),
+        'file_access': os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
+    }.get(log_type, os.getenv('DISCORD_WEBHOOK_STATUS'))
+
+    # Create embed using EMBED_CONFIG
+    config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
+    embed = {
+        "title": config.get('title', 'Bot Log'),
+        "description": message,
+        "color": config.get('color', 0x7289DA),
+        "author": {"name": config.get('author', 'Telegram Bot')},
+        "footer": {"text": config.get('footer', 'Powered by xAI')},
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+    }
+
+    if update and log_type != 'status':  # Add username for non-status logs
+        username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
+        embed["description"] = f"[{username}]: {message}"
+
+    send_to_discord(webhook_url, embed)
