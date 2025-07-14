@@ -1,33 +1,30 @@
+#discord_webhook.py
+
+import os
 import requests
-
-import time
 from ratelimit import limits, sleep_and_retry
-from telegram_bot import Update
+from telegram import Update  # Correct import from python-telegram-bot
 
-# Discord webhook URLs (loaded from environment variables)
+# Discord webhook URLs from environment variables
 DISCORD_WEBHOOK_STATUS = os.getenv('DISCORD_WEBHOOK_STATUS')
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 
-# Rate limit: 30 calls per minute (Discord's limit)
 CALLS = 30
 RATE_LIMIT = 60
 
 @sleep_and_retry
 @limits(calls=CALLS, period=RATE_LIMIT)
 def send_to_discord(webhook_url, message):
-    """Send a message to a Discord webhook with rate limiting and retries."""
     if not webhook_url:
-        print("Webhook URL not set!")
+        print(f"Webhook URL not set for {webhook_url}!")
         return
-
     payload = {"content": message}
     headers = {"Content-Type": "application/json"}
-
-    for attempt in range(3):  # Retry up to 3 times
+    for attempt in range(3):
         try:
             response = requests.post(webhook_url, json=payload, headers=headers)
-            response.raise_for_status()  # Raise exception for bad status codes
+            response.raise_for_status()
             print(f"Sent to Discord: {message}")
             return
         except requests.exceptions.HTTPError as e:
@@ -42,20 +39,15 @@ def send_to_discord(webhook_url, message):
             print(f"Error sending to Discord: {e}")
             break
 
-def log_status(update: Update, message: str):
-    """Log status messages with username."""
-    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
-    formatted_message = f"[{username}]: {message}"
-    send_to_discord(DISCORD_WEBHOOK_STATUS, formatted_message)
-
-def log_file_access(update: Update, file_name: str):
-    """Log file access with username."""
-    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
-    formatted_message = f"[{username}] accessed file: {file_name}"
-    send_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, formatted_message)
-
-def log_list_command(update: Update, command: str):
-    """Log list command with username."""
-    username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
-    formatted_message = f"[{username}] used command: {command}"
-    send_to_discord(DISCORD_WEBHOOK_LIST_LOGS, formatted_message)
+def log_to_discord(update: Update = None, message: str = None, log_type: str = 'status'):
+    if update:  # Handle cases where update is provided (e.g., for commands)
+        username = update.effective_user.username or update.effective_user.full_name or str(update.effective_user.id)
+        formatted_message = f"[{username}]: {message}"
+    else:  # Handle cases without update (e.g., cleanup errors)
+        formatted_message = message
+    webhook_url = {
+        'status': DISCORD_WEBHOOK_STATUS,
+        'list': DISCORD_WEBHOOK_LIST_LOGS,
+        'file': DISCORD_WEBHOOK_FILE_ACCESS
+    }.get(log_type, DISCORD_WEBHOOK_STATUS)
+    send_to_discord(webhook_url, formatted_message)
