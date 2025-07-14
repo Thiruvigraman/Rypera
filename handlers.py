@@ -5,8 +5,7 @@ from database import load_movies, save_movie, delete_movie, rename_movie, add_us
 from telegram import send_message, send_file, send_announcement
 from discord import log_to_discord
 import time
-import psutil  # For /health command
-from main import start_time  # Import start_time
+import psutil
 
 TEMP_FILE_IDS = {}
 
@@ -103,7 +102,9 @@ def process_update(update):
             process = psutil.Process()
             mem = process.memory_info().rss / 1024 / 1024  # MB
             cpu = process.cpu_percent(interval=0.1)
-            uptime = time.time() - start_time
+            # Use process creation time for uptime
+            process_start_time = process.create_time()
+            uptime = time.time() - process_start_time
             uptime_str = f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s"
             msg = (
                 f"🩺 *Bot Health Check*\n\n"
