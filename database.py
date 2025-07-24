@@ -1,4 +1,4 @@
-#database.py 
+#database.py
 
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
