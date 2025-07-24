@@ -20,7 +20,7 @@ def log_to_discord(webhook, message, log_type='default'):
                 'description': message[:4096],  # Discord embed description limit
                 'color': config.get('color', default_config.get('color', 0x7289DA)),
                 'author': {'name': config.get('author', default_config.get('author', 'Telegram Bot'))},
-                'footer': {'text': config.get('footer', default_config.get('footer', 'Powered by xAI'))},
+                'footer': {'text': config.get('footer', default_config.get('footer', 'Created by Thiru'))},
                 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
             }
             if 'title' in config:
