@@ -12,7 +12,6 @@ def log_to_discord(webhook, message, log_type='default'):
     current_time = time.time()
     if webhook and (current_time - last_log_time >= log_interval):
         try:
-            # Get embed config based on log type
             config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
             default_config = EMBED_CONFIG['default']
             
@@ -28,7 +27,6 @@ def log_to_discord(webhook, message, log_type='default'):
                 
             response = requests.post(webhook, json={'embeds': [embed]})
             last_log_time = current_time
-            # Log failure details to DISCORD_WEBHOOK_STATUS (if not the same webhook)
             if response.status_code != 204:
                 error_msg = f"Failed to send Discord log to {webhook}: Status {response.status_code}, Response: {response.text}"
                 if webhook != DISCORD_WEBHOOK_STATUS:
@@ -40,7 +38,6 @@ def log_to_discord(webhook, message, log_type='default'):
                         }]
                     })
         except Exception as e:
-            # Log error to DISCORD_WEBHOOK_STATUS (if not the same webhook)
             error_msg = f"Error sending Discord log to {webhook}: {e}"
             if webhook != DISCORD_WEBHOOK_STATUS:
                 try:
@@ -52,4 +49,4 @@ def log_to_discord(webhook, message, log_type='default'):
                         }]
                     })
                 except:
-                    pass  # Avoid infinite loop if status webhook fails
+                    pass  # Avoid infinite loop
