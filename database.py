@@ -42,7 +42,7 @@ def rename_movie(old_name, new_name):
 def add_user(user_id, display_name):
     users_collection.update_one(
         {"user_id": user_id},
-        {"$set": {"user_id": user_id, "display_name": display_name}},
+        {"$set": {"user_id": user_id, "display_name": display_name or "Unknown"}},
         upsert=True
     )
 
