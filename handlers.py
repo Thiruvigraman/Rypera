@@ -1,4 +1,4 @@
-#handlers.py
+#handlers.py 
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
@@ -39,8 +39,6 @@ def process_update(update):
         if not chat_id or not user_id:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing chat_id or user_id in update: {update}", log_type='status')
             return
-
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Processing update for chat_id: {chat_id}, user_id: {user_id}, text: {text[:50]}", log_type='status')
 
         if user_id != ADMIN_ID:
             display_name = get_user_display_name(user)
