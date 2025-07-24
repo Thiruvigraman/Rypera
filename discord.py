@@ -1,4 +1,4 @@
-#discord.py
+#webhook.py
 
 import requests
 import time
