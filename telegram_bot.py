@@ -5,7 +5,7 @@ import threading
 import time
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
 from database import save_sent_file, delete_sent_file_record, get_pending_files
-from discord import log_to_discord
+from webhook import log_to_discord  # Updated import from discord to webhook
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
