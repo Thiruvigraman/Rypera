@@ -2,9 +2,10 @@
 
 import requests
 import threading
+import time
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS
-from database import save_sent_file, delete_sent_file_record
-from discord_webhook import log_to_discord
+from database import save_sent_file, delete_sent_file_record, get_pending_files
+from discord import log_to_discord
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -22,6 +23,7 @@ def send_file(chat_id, file_id):
 
     if message_data.get('ok'):
         file_message_id = message_data['result']['message_id']
+
         warning_text = (
             "❗️ *IMPORTANT* ❗️\n\n"
             "This Video / File Will Be Deleted In *15 minutes* _(Due To Copyright Issues)_\n\n"
@@ -34,9 +36,7 @@ def send_file(chat_id, file_id):
             save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
             threading.Timer(900, delete_messages, args=[chat_id, file_message_id, warning_message_id]).start()
         else:
-            log_to_discord(None, f"Failed to send warning message for chat_id: {chat_id}", log_type='status')
-    else:
-        log_to_discord(None, f"Failed to send file for chat_id: {chat_id}", log_type='status')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send warning message for chat_id: {chat_id}", log_type='status')
 
 def delete_messages(chat_id, file_message_id, warning_message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
@@ -45,7 +45,17 @@ def delete_messages(chat_id, file_message_id, warning_message_id):
             payload = {'chat_id': chat_id, 'message_id': message_id}
             requests.post(url, json=payload)
         except Exception as e:
-            log_to_discord(None, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
+    delete_sent_file_record(chat_id, file_message_id)
+
+def cleanup_pending_files():
+    pending_files = get_pending_files(expiry_minutes=15)
+    for file_data in pending_files:
+        try:
+            delete_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']} on startup", log_type='status')
+        except Exception as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {e}", log_type='status')
 
 def send_announcement(user_ids, message, parse_mode=None):
     success_count = 0
