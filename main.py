@@ -27,7 +27,7 @@ def health():
         cpu = process.cpu_percent(interval=0.1)
         return jsonify({"status": "healthy", "uptime": time.time() - start_time, "memory_mb": mem, "cpu_percent": cpu})
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health endpoint error: {e}\n{traceback.format_exc()}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health endpoint error: {str(e)}", log_type='status')
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
@@ -36,12 +36,10 @@ def handle_webhook():
         update = request.get_json()
         if update:
             from handlers import process_update
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received Telegram update: {update}", log_type='status')
             process_update(update)
         return jsonify(success=True)
     except Exception as e:
-        error_msg = f"Webhook error: {e}\n{traceback.format_exc()}"
-        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook processing error: {str(e)}", log_type='status')
         return jsonify({"error": str(e)}), 500
 
 @app.route('/shutdown', methods=['POST'])
@@ -59,7 +57,7 @@ log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online.", log_type='status')
 try:
     cleanup_pending_files()
 except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Startup cleanup error: {e}\n{traceback.format_exc()}", log_type='status')
+    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Startup cleanup error: {str(e)}", log_type='status')
 
 # On exit
 def on_exit():
@@ -82,5 +80,5 @@ if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), use_reloader=False)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Flask app crashed: {e}\n{traceback.format_exc()}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Flask app crashed: {str(e)}", log_type='status')
         raise
