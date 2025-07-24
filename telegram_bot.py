@@ -1,4 +1,4 @@
-# telegram_bot.py
+# bot.py
 
 import requests
 import threading
