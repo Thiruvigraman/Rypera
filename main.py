@@ -53,7 +53,7 @@ def shutdown():
     return jsonify({"error": "Unauthorized"}), 403
 
 # On startup
-log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online.", log_type='status')
+log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online.", log_type='startup')
 try:
     cleanup_pending_files()
 except Exception as e:
