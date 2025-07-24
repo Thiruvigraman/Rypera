@@ -1,3 +1,4 @@
+
 #main.py
 
 import atexit
@@ -69,7 +70,7 @@ def on_exit():
     else:
         try:
             process = psutil.Process()
-            mem = process.memory_info().rss / 1024 / 1024  # MB
+            mem = process.memory_info().rss / 1024 / 1024
             cpu = process.cpu_percent(interval=0.1)
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
         except Exception as e:
