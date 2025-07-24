@@ -128,7 +128,7 @@ def process_update(update):
                     f"*Memory Usage*: {mem:.2f} MB\n"
                     f"*CPU Usage*: {cpu:.2f}%\n"
                     f"*MongoDB Storage Used*: {storage_used_mb:.2f} MB\n"
-                    f"*MongoDB Storage Total*: {storage_total_mb:.2f} MB"
+                    
                 )
                 send_message(chat_id, msg, parse_mode="Markdown")
                 log_to_discord(
