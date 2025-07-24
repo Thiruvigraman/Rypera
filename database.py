@@ -21,12 +21,10 @@ for attempt in range(max_retries):
         log_to_discord(DISCORD_WEBHOOK_STATUS, "MongoDB connected successfully.", log_type='status')
         break
     except ConnectionFailure as e:
-        if attempt < max_retries - 1:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"MongoDB connection attempt {attempt + 1} failed: {e}, retrying...", log_type='status')
-            time.sleep(5)
-        else:
+        if attempt == max_retries - 1:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB after {max_retries} attempts: {e}", log_type='status')
             raise
+        time.sleep(5)
 
 def load_movies():
     try:
