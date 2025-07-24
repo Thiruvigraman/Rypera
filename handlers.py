@@ -109,7 +109,6 @@ def process_update(update):
                 cpu = process.cpu_percent(interval=0.1)
                 process_start_time = process.create_time()
                 uptime = time.time() - process_start_time
-                # Format uptime: show days if > 24 hours, else hours
                 if uptime >= 86400:  # 24 hours in seconds
                     days = int(uptime // 86400)
                     hours = int((uptime % 86400) // 3600)
@@ -121,9 +120,8 @@ def process_update(update):
                     minutes = int((uptime % 3600) // 60)
                     seconds = int(uptime % 60)
                     uptime_str = f"{hours}h {minutes}m {seconds}s"
-                # Get MongoDB storage stats
                 db_stats = db.command("dbStats")
-                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024  # Convert bytes to MB
+                storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024
                 storage_total_mb = 512  # MongoDB Atlas M0 limit
                 msg = (
                     f"🩺 *Bot Health Check*\n\n"
@@ -150,10 +148,8 @@ def process_update(update):
                 if not users:
                     send_message(chat_id, "No users found in the database.")
                     return
-                # Handle missing display_name
                 user_list = "\n".join([f"ID: {user['user_id']} - Name: {user.get('display_name', 'Unknown')}" for user in users])
                 msg = f"📋 *Registered Users*:\n\n{user_list}"
-                # Split message if it exceeds Telegram's 4096-character limit
                 if len(msg) > 4000:
                     chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
                     for chunk in chunks:
@@ -205,4 +201,4 @@ def process_update(update):
             return
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
-        raise  # Re-raise to trigger 500 error logging in main.py
+        raise
