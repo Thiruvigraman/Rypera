@@ -1,4 +1,4 @@
-#handlers.py 
+#handlers.py
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
@@ -6,7 +6,6 @@ from bot import send_message, send_file, send_announcement
 from webhook import log_to_discord
 import time
 import psutil
-import traceback
 
 TEMP_FILE_IDS = {}
 
@@ -19,13 +18,13 @@ def get_user_display_name(user):
         last_name = user.get('last_name', '')
         return f"{first_name} {last_name}".strip() or "Unknown User"
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in get_user_display_name: {e}\n{traceback.format_exc()}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error retrieving user display name: {str(e)}", log_type='status')
         return "Unknown User"
 
 def process_update(update):
     try:
         if not isinstance(update, dict) or 'message' not in update:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid update received: {update}", log_type='status')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, "Invalid update received.", log_type='status')
             return
 
         message = update.get('message', {})
@@ -37,11 +36,14 @@ def process_update(update):
         video = message.get('video')
 
         if not chat_id or not user_id:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing chat_id or user_id in update: {update}", log_type='status')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing chat_id or user_id in update.", log_type='status')
             return
 
+        display_name = get_user_display_name(user)
+        if text:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Command {text} received from {display_name} (ID: {user_id})", log_type='status')
+
         if user_id != ADMIN_ID:
-            display_name = get_user_display_name(user)
             add_user(user_id, display_name)
 
         if (document or video) and user_id == ADMIN_ID:
@@ -145,12 +147,12 @@ def process_update(update):
                 send_message(chat_id, msg, parse_mode="Markdown")
                 log_to_discord(
                     DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Admin requested health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, MongoDB Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
+                    f"Health check: Uptime {uptime_str}, Memory {mem:.2f} MB, CPU {cpu:.2f}%, Storage {storage_used_mb:.2f}/{storage_total_mb:.2f} MB",
                     log_type='list_logs'
                 )
             except Exception as e:
-                send_message(chat_id, f"Error checking health: {e}")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {e}\n{traceback.format_exc()}", log_type='list_logs')
+                send_message(chat_id, f"Error checking health: {str(e)}")
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {str(e)}", log_type='list_logs')
             return
 
         if text == '/users' and user_id == ADMIN_ID:
@@ -169,14 +171,14 @@ def process_update(update):
                     send_message(chat_id, msg, parse_mode="Markdown")
                 log_to_discord(
                     DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Admin requested user list, found {len(users)} users",
+                    f"User list requested: {len(users)} users found",
                     log_type='list_logs'
                 )
             except Exception as e:
-                send_message(chat_id, f"Error retrieving users: {e}")
+                send_message(chat_id, f"Error retrieving users: {str(e)}")
                 log_to_discord(
                     DISCORD_WEBHOOK_LIST_LOGS,
-                    f"Error retrieving user list: {e}\n{traceback.format_exc()}",
+                    f"Error retrieving user list: {str(e)}",
                     log_type='list_logs'
                 )
             return
@@ -197,7 +199,7 @@ def process_update(update):
                 chat_id,
                 f"📢 Announcement sent!\nSuccess: {success_count} users\nFailed: {failed_count} users",
             )
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent to {success_count} users, failed for {failed_count} users", log_type='list_logs')
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent: {success_count} success, {failed_count} failed", log_type='list_logs')
             return
 
         if text.startswith('/start '):
@@ -212,5 +214,5 @@ def process_update(update):
             return
 
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in process_update: {e}\n{traceback.format_exc()}\nUpdate: {update}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error processing update: {str(e)}", log_type='status')
         raise
