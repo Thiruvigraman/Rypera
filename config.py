@@ -1,4 +1,4 @@
-#config.py
+# config.py
 
 import os
 from dotenv import load_dotenv
@@ -20,23 +20,32 @@ if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID]):
 ADMIN_ID = int(ADMIN_ID)
 STORAGE_CHAT_ID = int(STORAGE_CHAT_ID)
 
-# Embed customization
+
 EMBED_CONFIG = {
     'default': {
-        'color': 0x7289DA,  # Default color (blurple)
+        'color': 0x7289DA,  # Blurple fallback
         'author': 'Telegram Bot',
-        'footer': 'Powered by xAI',
+        'footer': 'Created by Thiru',
+        'emoji': 'ℹ️'  
     },
     'status': {
-        'color': 0xFF0000,  # Red for status (e.g., errors, shutdowns)
+        'color': 0xFF0000,  
         'title': 'Bot Status Update',
+        'emoji': '🛑'  
+    },
+    'startup': {
+        'color': 0x00FF00,  
+        'title': 'Bot Startup',
+        'emoji': '✅'  
     },
     'list_logs': {
-        'color': 0x00FF00,  # Green for admin actions
+        'color': 0x800080,
         'title': 'Admin Action Log',
+        'emoji': '👑'  
     },
     'file_access': {
-        'color': 0x0000FF,  # Blue for user file access
+        'color': 0xFFFF00,
         'title': 'File Access Log',
+        'emoji': '📂'  
     }
 }
