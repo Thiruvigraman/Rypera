@@ -1,4 +1,4 @@
-# main.py
+#main.py
 
 import atexit
 import os
@@ -7,8 +7,8 @@ import time
 import traceback
 import psutil
 from flask import Flask, request, jsonify
-from telegram import cleanup_pending_files
-from discord import log_to_discord
+from bot import cleanup_pending_files  # Updated import from telegram to bot
+from webhook import log_to_discord  # Updated import from discord to webhook
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 from handlers import process_update
 
