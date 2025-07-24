@@ -2,7 +2,7 @@
 
 from pymongo import MongoClient
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
-from webhook import log_to_discord  # Updated import from discord to webhook
+from webhook import log_to_discord
 
 # MongoDB Setup
 try:
