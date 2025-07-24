@@ -5,7 +5,6 @@ import os
 import signal
 import time
 import traceback
-import psutil
 from flask import Flask, request, jsonify
 from utils import cleanup_pending_files
 from webhook import log_to_discord
@@ -42,7 +41,7 @@ def handle_webhook():
         return jsonify(success=True)
     except Exception as e:
         error_msg = f"Webhook error: {e}\n{traceback.format_exc()}"
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook processing error: {error_msg}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status')
         return jsonify({"error": str(e)}), 500
 
 @app.route('/shutdown', methods=['POST'])
@@ -50,13 +49,13 @@ def shutdown():
     if request.json.get('admin_id') == str(ADMIN_ID):
         global is_shutting_down
         is_shutting_down = True
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Shutdown initiated by admin.", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off.", log_type='status')
         os._exit(0)
         return jsonify({"status": "Shutting down"})
     return jsonify({"error": "Unauthorized"}), 403
 
 # On startup
-log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot started (PID: {os.getpid()})", log_type='status')
+log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online.", log_type='status')
 try:
     cleanup_pending_files()
 except Exception as e:
@@ -65,26 +64,12 @@ except Exception as e:
 # On exit
 def on_exit():
     if is_shutting_down:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot stopped (intentional shutdown, PID: {os.getpid()}).", log_type='status')
-    else:
-        try:
-            process = psutil.Process()
-            mem = process.memory_info().rss / 1024 / 1024
-            cpu = process.cpu_percent(interval=0.1)
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
-        except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Bot process terminated unexpectedly (PID: {os.getpid()}, Error: {e})", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off.", log_type='status')
 
 def handle_shutdown(signum, frame):
     global is_shutting_down
     is_shutting_down = True
-    try:
-        process = psutil.Process()
-        mem = process.memory_info().rss / 1024 / 1024
-        cpu = process.cpu_percent(interval=0.1)
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal {signum} (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal {signum} (PID: {os.getpid()}, Error: {e})", log_type='status')
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off.", log_type='status')
     os._exit(0)
 
 atexit.register(on_exit)
