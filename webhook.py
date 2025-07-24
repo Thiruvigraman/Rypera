@@ -5,12 +5,13 @@ import time
 from config import DISCORD_WEBHOOK_STATUS, EMBED_CONFIG
 
 last_log_time = 0
-log_interval = 10  # Minimum seconds between logs
+log_interval = 10  # Minimum seconds between logs (except for file_access)
 
 def log_to_discord(webhook, message, log_type='default'):
     global last_log_time
     current_time = time.time()
-    if webhook and (current_time - last_log_time >= log_interval):
+    # Skip delay for file_access logs to ensure immediate logging
+    if log_type == 'file_access' or (webhook and (current_time - last_log_time >= log_interval)):
         try:
             config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
             default_config = EMBED_CONFIG['default']
