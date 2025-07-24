@@ -57,7 +57,8 @@ def delete_messages(chat_id, file_message_id, warning_message_id):
             response = requests.post(url, json=payload)
             response.raise_for_status()
         except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='_Format
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
+    delete_sent_file_record(chat_id, file_message_id)
 
 def send_announcement(user_ids, message, parse_mode=None):
     success_count = 0
