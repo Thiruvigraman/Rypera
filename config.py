@@ -25,15 +25,15 @@ EMBED_CONFIG = {
         'author': 'Telegram Bot',
         'footer': 'Powered by xAI',
     },
-    'status': {  # For DISCORD_WEBHOOK_STATUS
+    'status': {
         'color': 0xFF0000,  # Red for status (e.g., errors, shutdowns)
         'title': 'Bot Status Update',
     },
-    'list_logs': {  # For DISCORD_WEBHOOK_LIST_LOGS
-        'color': 0x00FF00,  # Green for admin actions (e.g., movie added)
+    'list_logs': {
+        'color': 0x00FF00,  # Green for admin actions
         'title': 'Admin Action Log',
     },
-    'file_access': {  # For DISCORD_WEBHOOK_FILE_ACCESS
+    'file_access': {
         'color': 0x0000FF,  # Blue for user file access
         'title': 'File Access Log',
     }
