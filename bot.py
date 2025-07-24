@@ -57,8 +57,7 @@ def delete_messages(chat_id, file_message_id, warning_message_id):
             response = requests.post(url, json=payload)
             response.raise_for_status()
         except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
-    delete_sent_file_record(chat_id, file_message_id)
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='_Format
 
 def send_announcement(user_ids, message, parse_mode=None):
     success_count = 0
@@ -72,3 +71,15 @@ def send_announcement(user_ids, message, parse_mode=None):
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send announcement to user {user_id}: {e}", log_type='status')
             failed_count += 1
     return success_count, failed_count
+
+def cleanup_pending_files():
+    try:
+        pending_files = get_pending_files(expiry_minutes=15)
+        for file_data in pending_files:
+            try:
+                delete_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']} on startup", log_type='status')
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {e}", log_type='status')
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {e}", log_type='status')
