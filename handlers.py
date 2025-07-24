@@ -1,6 +1,6 @@
 #handlers.py
 
-from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS
+from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
 from bot import send_message, send_file, send_announcement
 from webhook import log_to_discord
@@ -11,25 +11,34 @@ import traceback
 TEMP_FILE_IDS = {}
 
 def get_user_display_name(user):
-    username = user.get('username')
-    if username:
-        return f"@{username}"
-    first_name = user.get('first_name', '')
-    last_name = user.get('last_name', '')
-    return f"{first_name} {last_name}".strip() or "Unknown User"
+    try:
+        username = user.get('username')
+        if username:
+            return f"@{username}"
+        first_name = user.get('first_name', '')
+        last_name = user.get('last_name', '')
+        return f"{first_name} {last_name}".strip() or "Unknown User"
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in get_user_display_name: {e}\n{traceback.format_exc()}", log_type='status')
+        return "Unknown User"
 
 def process_update(update):
     try:
-        if 'message' not in update:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, "Received update with no message field.", log_type='status')
+        if not isinstance(update, dict) or 'message' not in update:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid update received: {update}", log_type='status')
             return
 
-        chat_id = update['message']['chat']['id']
-        user_id = update['message']['from']['id']
-        user = update['message']['from']
-        text = update['message'].get('text', '')
-        document = update['message'].get('document')
-        video = update['message'].get('video')
+        message = update.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        user_id = message.get('from', {}).get('id')
+        user = message.get('from', {})
+        text = message.get('text', '')
+        document = message.get('document')
+        video = message.get('video')
+
+        if not chat_id or not user_id:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing chat_id or user_id in update: {update}", log_type='status')
+            return
 
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Processing update for chat_id: {chat_id}, user_id: {user_id}, text: {text[:50]}", log_type='status')
 
@@ -38,9 +47,13 @@ def process_update(update):
             add_user(user_id, display_name)
 
         if (document or video) and user_id == ADMIN_ID:
-            file_id = document['file_id'] if document else video['file_id']
-            TEMP_FILE_IDS[chat_id] = file_id
-            send_message(chat_id, "Send the name of this movie to store it:")
+            file_id = document['file_id'] if document else video['file_id'] if video else None
+            if file_id:
+                TEMP_FILE_IDS[chat_id] = file_id
+                send_message(chat_id, "Send the name of this movie to store it:")
+            else:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing file_id in document or video for chat_id: {chat_id}", log_type='status')
+                send_message(chat_id, "Error: No valid file found in the message.")
             return
 
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
@@ -199,6 +212,7 @@ def process_update(update):
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found.")
             return
+
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in process_update: {e}\n{traceback.format_exc()}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in process_update: {e}\n{traceback.format_exc()}\nUpdate: {update}", log_type='status')
         raise
