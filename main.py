@@ -10,7 +10,6 @@ from flask import Flask, request, jsonify
 from utils import cleanup_pending_files
 from webhook import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
-from handlers import process_update
 
 app = Flask(__name__)
 
@@ -37,6 +36,7 @@ def handle_webhook():
     try:
         update = request.get_json()
         if update:
+            from handlers import process_update
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received Telegram update: {update}", log_type='status')
             process_update(update)
         return jsonify(success=True)
@@ -78,7 +78,13 @@ def on_exit():
 def handle_shutdown(signum, frame):
     global is_shutting_down
     is_shutting_down = True
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal {signum} (PID: {os.getpid()}).", log_type='status')
+    try:
+        process = psutil.Process()
+        mem = process.memory_info().rss / 1024 / 1024
+        cpu = process.cpu_percent(interval=0.1)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal {signum} (PID: {os.getpid()}, Memory: {mem:.2f} MB, CPU: {cpu:.2f}%)", log_type='status')
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Received shutdown signal {signum} (PID: {os.getpid()}, Error: {e})", log_type='status')
     os._exit(0)
 
 atexit.register(on_exit)
