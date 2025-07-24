@@ -12,38 +12,50 @@ def send_message(chat_id, text, parse_mode=None):
     payload = {'chat_id': chat_id, 'text': text}
     if parse_mode:
         payload['parse_mode'] = parse_mode
-    response = requests.post(url, json=payload)
-    return response.json()
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send Telegram message to chat {chat_id}: {e}", log_type='status')
+        return {'ok': False, 'error': str(e)}
 
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': chat_id, 'document': file_id}
-    response = requests.post(url, json=payload)
-    message_data = response.json()
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        message_data = response.json()
 
-    if message_data.get('ok'):
-        file_message_id = message_data['result']['message_id']
+        if message_data.get('ok'):
+            file_message_id = message_data['result']['message_id']
 
-        warning_text = (
-            "❗️ *IMPORTANT* ❗️\n\n"
-            "This Video / File Will Be Deleted In *15 minutes* _(Due To Copyright Issues)_\n\n"
-            "📌 *Please Forward This Video / File To Somewhere Else And Start Downloading There.*"
-        )
-        warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
-        warning_message_id = warning_response.get('result', {}).get('message_id')
+            warning_text = (
+                "❗️ *IMPORTANT* ❗️\n\n"
+                "This Video / File Will Be Deleted In *15 minutes* _(Due To Copyright Issues)_\n\n"
+                "📌 *Please Forward This Video / File To Somewhere Else And Start Downloading There.*"
+            )
+            warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
+            warning_message_id = warning_response.get('result', {}).get('message_id')
 
-        if warning_message_id:
-            save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-            threading.Timer(900, delete_messages, args=[chat_id, file_message_id, warning_message_id]).start()
-        else:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send warning message for chat_id: {chat_id}", log_type='status')
+            if warning_message_id:
+                save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
+                threading.Timer(900, delete_messages, args=[chat_id, file_message_id, warning_message_id]).start()
+            else:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send warning message for chat_id: {chat_id}", log_type='status')
+        return message_data
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send file to chat {chat_id}: {e}", log_type='status')
+        return {'ok': False, 'error': str(e)}
 
 def delete_messages(chat_id, file_message_id, warning_message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
     for message_id in [file_message_id, warning_message_id]:
         try:
             payload = {'chat_id': chat_id, 'message_id': message_id}
-            requests.post(url, json=payload)
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to delete message {message_id} in chat {chat_id}: {e}", log_type='status')
     delete_sent_file_record(chat_id, file_message_id)
