@@ -21,6 +21,9 @@ def send_message(chat_id, text, parse_mode=None):
         return {'ok': False, 'error': str(e)}
 
 def forward_file_to_storage(file_id):
+    if not STORAGE_CHAT_ID:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage.", log_type='status')
+        return None
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
     try:
@@ -32,7 +35,8 @@ def forward_file_to_storage(file_id):
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status')
             return storage_message_id
         else:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}", log_type='status')
+            error_description = message_data.get('description', 'Unknown error')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status')
             return None
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {str(e)}", log_type='status')
@@ -40,13 +44,15 @@ def forward_file_to_storage(file_id):
 
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
-    # Forward file to storage chat first
+    # Attempt to forward file to storage chat
     storage_message_id = forward_file_to_storage(file_id)
     if not storage_message_id:
-        send_message(chat_id, "Error: Could not store file for sharing.")
-        return {'ok': False, 'error': 'Failed to store file'}
+        log_to_discord(DISCORD_WEBHOOK_STATUS, "Failed to store file in storage chat, proceeding with direct send.", log_type='status')
+        # Continue with sending file to user even if storage fails, mimicking old behavior
+    else:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"File successfully stored in storage chat {STORAGE_CHAT_ID}", log_type='status')
 
-    # Send file to user from storage chat
+    # Send file to user
     payload = {'chat_id': chat_id, 'document': file_id}
     try:
         response = requests.post(url, json=payload)
@@ -66,13 +72,16 @@ def send_file(chat_id, file_id):
 
             if warning_message_id:
                 save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-                threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id])
+                # Start timer in a separate thread to delete messages after 15 minutes
+                threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id]).start()
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"File sent to chat {chat_id}", log_type='status')
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending warning message to chat {chat_id}", log_type='status')
         return message_data
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending file to chat {chat_id}: {str(e)}", log_type='status')
+        error_msg = f"Error sending file to chat {chat_id}: {str(e)}"
+        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status')
+        send_message(chat_id, error_msg)
         return {'ok': False, 'error': str(e)}
 
 def delete_user_messages(chat_id, file_message_id, warning_message_id):
