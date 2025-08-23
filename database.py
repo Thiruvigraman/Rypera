@@ -1,4 +1,4 @@
-#database.py
+#database.py 
 
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
@@ -6,10 +6,6 @@ from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
 from webhook import log_to_discord
 from bot import send_message
 import time
-
-# Stub for log_to_betterstack (replace with actual implementation)
-def log_to_betterstack(event, data):
-    print(f"Better Stack log: {event}, Data: {data}")
 
 # MongoDB Setup with retry
 max_retries = 5
@@ -33,7 +29,6 @@ for attempt in range(max_retries):
     except ConnectionFailure as e:
         if attempt == max_retries - 1:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {str(e)}", log_type='status', severity='error')
-            log_to_betterstack("mongodb_failure", {"error": str(e)})
             send_message(ADMIN_ID, "Critical: MongoDB connection failed. Bot is down.")
             raise
         time.sleep(10)
