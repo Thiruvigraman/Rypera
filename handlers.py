@@ -1,4 +1,4 @@
-#handlers.py
+#handlers.py 
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
@@ -35,6 +35,7 @@ def process_update(update):
         text = message.get('text', '')
         document = message.get('document')
         video = message.get('video')
+        forward_from = message.get('forward_from') or message.get('forward_from_chat') or message.get('forward_from_message_id')
 
         if not chat_id or not user_id:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "Missing chat_id or user_id in update", log_type='status', severity='error')
@@ -47,6 +48,7 @@ def process_update(update):
         if user_id != ADMIN_ID:
             add_user(user_id, display_name)
 
+        # Handle forwarded or directly sent files from admins
         if (document or video) and user_id == ADMIN_ID:
             file_id = document['file_id'] if document else video['file_id'] if video else None
             if file_id:
@@ -55,26 +57,31 @@ def process_update(update):
                     send_message(chat_id, "Error retrieving file info")
                     log_to_discord(DISCORD_WEBHOOK_STATUS, "Error retrieving file info", log_type='status', severity='error')
                     return
-                file_size = file_info['result'].get('file_size', 0)
-                if file_size > 50 * 1024 * 1024:
-                    send_message(chat_id, "File too large (max 50 MB). Please compress or split the file")
-                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Oversized file rejected: {file_size} bytes", log_type='status', severity='error')
-                    return
                 TEMP_FILE_IDS[chat_id] = file_id
-                send_message(chat_id, "Send the name of this movie to store it")
+                source = "forwarded" if forward_from else "uploaded"
+                send_message(chat_id, f"Please send the name for the {source} file")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"{source.capitalize()} file received from {display_name} (ID: {user_id})", log_type='status', severity='info')
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing file_id in document or video for chat_id: {chat_id}", log_type='status', severity='error')
                 send_message(chat_id, "Error: No valid file found in the message")
             return
 
+        # Save file name provided by admin
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
-            send_message(chat_id, f"Movie '{text}' has been added")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}", log_type='list_logs', severity='info')
+            send_message(chat_id, f"File '{text}' has been added")
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"File added: {text}", log_type='list_logs', severity='info')
             del TEMP_FILE_IDS[chat_id]
             return
 
-        if text == '/list_files' and user_id == ADMIN_ID:
+        # Restrict all commands to admins
+        if user_id != ADMIN_ID and text.startswith('/'):
+            send_message(chat_id, "Error: You are not authorized to use this command")
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Unauthorized command attempt by {display_name} (ID: {user_id}): {text}", log_type='status', severity='warning')
+            return
+
+        # Admin-only commands
+        if text == '/list_files':
             movies = load_movies()
             msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored"
             if len(msg) > 4000:
@@ -87,7 +94,7 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, "File list requested", log_type='list_logs', severity='info')
             return
 
-        if text.startswith('/rename_file') and user_id == ADMIN_ID:
+        if text.startswith('/rename_file'):
             parts = text.split(maxsplit=2)
             if len(parts) < 3:
                 send_message(chat_id, "Usage: /rename_file OldName NewName")
@@ -97,10 +104,10 @@ def process_update(update):
                     send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'")
                     log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'", log_type='list_logs', severity='info')
                 else:
-                    send_message(chat_id, f"Movie '{old_name}' not found")
+                    send_message(chat_id, f"File '{old_name}' not found")
             return
 
-        if text.startswith('/delete_file') and user_id == ADMIN_ID:
+        if text.startswith('/delete_file'):
             parts = text.split(maxsplit=1)
             if len(parts) < 2:
                 send_message(chat_id, "Usage: /delete_file FileName")
@@ -108,33 +115,33 @@ def process_update(update):
                 file_name = parts[1]
                 delete_movie(file_name)
                 send_message(chat_id, f"Deleted '{file_name}'")
-                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}", log_type='list_logs', severity='info')
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted file: {file_name}", log_type='list_logs', severity='info')
             return
 
-        if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
+        if text.startswith('/get_movie_link'):
             parts = text.split(maxsplit=1)
             if len(parts) < 2:
-                send_message(chat_id, "Usage: /get_movie_link Movie Name")
+                send_message(chat_id, "Usage: /get_movie_link File Name")
             else:
-                movie_name = parts[1]
+                file_name = parts[1]
                 movies = load_movies()
-                if movie_name in movies:
-                    safe_name = movie_name.replace(" ", "_")
+                if file_name in movies:
+                    safe_name = file_name.replace(" ", "_")
                     movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
-                    send_message(chat_id, f"Click here to get the movie: {movie_link}")
-                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}", log_type='list_logs', severity='info')
+                    send_message(chat_id, f"Click here to get the file: {movie_link}")
+                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {file_name}", log_type='list_logs', severity='info')
                 else:
-                    send_message(chat_id, f"Movie '{movie_name}' not found")
+                    send_message(chat_id, f"File '{file_name}' not found")
             return
 
-        if text == '/stats' and user_id == ADMIN_ID:
+        if text == '/stats':
             stats = get_stats()
-            msg = f"Bot Statistics:\nTotal Movies: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
+            msg = f"Bot Statistics:\nTotal Files: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
             send_message(chat_id, msg)
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, "Stats requested", log_type='list_logs', severity='info')
             return
 
-        if text == '/health' and user_id == ADMIN_ID:
+        if text == '/health':
             try:
                 process = psutil.Process()
                 mem = process.memory_info().rss / 1024 / 1024
@@ -175,7 +182,7 @@ def process_update(update):
                 log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {str(e)}", log_type='list_logs', severity='error')
             return
 
-        if text == '/users' and user_id == ADMIN_ID:
+        if text == '/users':
             try:
                 users = get_all_users()
                 if not users:
@@ -206,7 +213,7 @@ def process_update(update):
                 )
             return
 
-        if text.startswith('/announce') and user_id == ADMIN_ID:
+        if text.startswith('/announce'):
             parts = text.split(maxsplit=1)
             if len(parts) < 2:
                 send_message(chat_id, "Usage: /announce Your announcement message")
@@ -226,14 +233,18 @@ def process_update(update):
             return
 
         if text.startswith('/start '):
+            if user_id != ADMIN_ID:
+                send_message(chat_id, "Error: You are not authorized to use this command")
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Unauthorized file access attempt by {display_name} (ID: {user_id}): {text}", log_type='status', severity='warning')
+                return
             movie_name = text.replace('/start ', '').replace('_', ' ')
             movies = load_movies()
             if movie_name in movies and 'file_id' in movies[movie_name]:
                 display_name = get_user_display_name(user)
                 send_file(chat_id, movies[movie_name]['file_id'])
-                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access', severity='info')
+                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed file: {movie_name}", log_type='file_access', severity='info')
             else:
-                send_message(chat_id, f"Movie '{movie_name}' not found")
+                send_message(chat_id, f"File '{movie_name}' not found")
             return
 
     except Exception as e:
