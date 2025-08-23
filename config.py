@@ -1,4 +1,4 @@
-# config.py
+   #config.py
 
 import os
 from dotenv import load_dotenv
@@ -13,9 +13,8 @@ DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGODB_URI')
 STORAGE_CHAT_ID = os.getenv('STORAGE_CHAT_ID')
-BETTERSTACK_ENDPOINT = os.getenv('BETTERSTACK_ENDPOINT')
 
-if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID, BETTERSTACK_ENDPOINT]):
+if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID]):
     raise ValueError("Missing environment variables")
 
 ADMIN_ID = int(ADMIN_ID)
