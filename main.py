@@ -7,7 +7,6 @@ import time
 import threading
 import psutil
 from flask import Flask, request, jsonify
-from utils import cleanup_pending_files
 from webhook import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 
@@ -65,6 +64,7 @@ def monitor_resources():
 
 threading.Thread(target=monitor_resources, daemon=True).start()
 
+from utils import cleanup_pending_files
 log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online", log_type='startup', severity='info')
 try:
     cleanup_pending_files()
