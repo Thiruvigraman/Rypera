@@ -3,9 +3,9 @@
 import requests
 import threading
 import time
-from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID, BETTERSTACK_ENDPOINT
+from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID
 from database import save_sent_file, delete_sent_file_record, get_pending_files
-from webhook import log_to_discord, log_to_betterstack
+from webhook import log_to_discord
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -18,35 +18,29 @@ def send_message(chat_id, text, parse_mode=None):
         return response.json()
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending message to chat {chat_id}: {str(e)}", log_type='status', severity='error')
-        log_to_betterstack("send_message_error", {"chat_id": chat_id, "error": str(e)})
         return {'ok': False, 'error': str(e)}
 
 def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage", log_type='status', severity='warning')
-        log_to_betterstack("storage_id_missing", {})
         return None
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
     try:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Starting file upload to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-        log_to_betterstack("file_upload_start", {"file_id": file_id})
         response = requests.post(url, json=payload)
         response.raise_for_status()
         message_data = response.json()
         if message_data.get('ok'):
             storage_message_id = message_data['result']['message_id']
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-            log_to_betterstack("file_upload_success", {"file_id": file_id, "storage_message_id": storage_message_id})
             return storage_message_id
         else:
             error_description = message_data.get('description', 'Unknown error')
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
-            log_to_betterstack("file_upload_failure", {"error": error_description})
             return None
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {str(e)}", log_type='status', severity='error')
-        log_to_betterstack("file_storage_error", {"error": str(e)})
         return None
 
 def send_file(chat_id, file_id):
@@ -54,10 +48,8 @@ def send_file(chat_id, file_id):
     storage_message_id = forward_file_to_storage(file_id)
     if not storage_message_id:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "Failed to store file in storage chat, proceeding with direct send", log_type='status', severity='warning')
-        log_to_betterstack("storage_failure_direct_send", {})
     else:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-        log_to_betterstack("storage_success", {"storage_message_id": storage_message_id})
 
     payload = {'chat_id': chat_id, 'document': file_id}
     try:
@@ -79,15 +71,12 @@ def send_file(chat_id, file_id):
                 save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
                 threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id]).start()
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"File sent to chat {chat_id}", log_type='status', severity='info')
-                log_to_betterstack("file_sent", {"chat_id": chat_id})
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending warning message to chat {chat_id}", log_type='status', severity='error')
-                log_to_betterstack("warning_message_error", {"chat_id": chat_id})
         return message_data
     except Exception as e:
         error_msg = f"Error sending file to chat {chat_id}: {str(e)}"
         log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status', severity='error')
-        log_to_betterstack("file_send_error", {"chat_id": chat_id, "error": str(e)})
         send_message(chat_id, error_msg)
         return {'ok': False, 'error': str(e)}
 
@@ -99,10 +88,8 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
             response = requests.post(url, json=payload)
             response.raise_for_status()
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Message {message_id} deleted in chat {chat_id}", log_type='status', severity='info')
-            log_to_betterstack("message_deleted", {"chat_id": chat_id, "message_id": message_id})
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting message {message_id} in chat {chat_id}: {str(e)}", log_type='status', severity='error')
-            log_to_betterstack("delete_message_error", {"chat_id": chat_id, "message_id": message_id, "error": str(e)})
     delete_sent_file_record(chat_id, file_message_id)
 
 def send_announcement(user_ids, message, parse_mode=None):
@@ -118,7 +105,6 @@ def send_announcement(user_ids, message, parse_mode=None):
             except Exception as e:
                 if attempt == 2:
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
-                    log_to_betterstack("announcement_error", {"user_id": user_id, "error": str(e)})
                     failed_count += 1
                 time.sleep(1)
     return success_count, failed_count
@@ -130,10 +116,7 @@ def cleanup_pending_files():
             try:
                 delete_user_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']}", log_type='status', severity='info')
-                log_to_betterstack("file_cleaned_up", {"chat_id": file_data['chat_id']})
             except Exception as e:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {str(e)}", log_type='status', severity='error')
-                log_to_betterstack("cleanup_error", {"chat_id": file_data['chat_id'], "error": str(e)})
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {str(e)}", log_type='status', severity='error')
-        log_to_betterstack("cleanup_pending_files_error", {"error": str(e)})
