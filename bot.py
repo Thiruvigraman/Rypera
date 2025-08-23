@@ -4,21 +4,9 @@ import requests
 import threading
 import time
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID
-from database import save_sent_file, delete_sent_file_record, get_pending_files
+from database import save_sent_file, delete_sent_file_record
+from telegram import send_message
 from webhook import log_to_discord
-
-def send_message(chat_id, text, parse_mode=None):
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    payload = {'chat_id': chat_id, 'text': text}
-    if parse_mode:
-        payload['parse_mode'] = parse_mode
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending message to chat {chat_id}: {str(e)}", log_type='status', severity='error')
-        return {'ok': False, 'error': str(e)}
 
 def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
@@ -80,18 +68,6 @@ def send_file(chat_id, file_id):
         send_message(chat_id, error_msg)
         return {'ok': False, 'error': str(e)}
 
-def delete_user_messages(chat_id, file_message_id, warning_message_id):
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
-    for message_id in [file_message_id, warning_message_id]:
-        try:
-            payload = {'chat_id': chat_id, 'message_id': message_id}
-            response = requests.post(url, json=payload)
-            response.raise_for_status()
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Message {message_id} deleted in chat {chat_id}", log_type='status', severity='info')
-        except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting message {message_id} in chat {chat_id}: {str(e)}", log_type='status', severity='error')
-    delete_sent_file_record(chat_id, file_message_id)
-
 def send_announcement(user_ids, message, parse_mode=None):
     success_count = 0
     failed_count = 0
@@ -108,15 +84,3 @@ def send_announcement(user_ids, message, parse_mode=None):
                     failed_count += 1
                 time.sleep(1)
     return success_count, failed_count
-
-def cleanup_pending_files():
-    try:
-        pending_files = get_pending_files(expiry_minutes=15)
-        for file_data in pending_files:
-            try:
-                delete_user_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']}", log_type='status', severity='info')
-            except Exception as e:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {str(e)}", log_type='status', severity='error')
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {str(e)}", log_type='status', severity='error')
