@@ -23,7 +23,7 @@ STORAGE_CHAT_ID = int(STORAGE_CHAT_ID)
 EMBED_CONFIG = {
     'default': {
         'color': 0x7289DA,
-        'author': 'Telegram Bot',
+        'author': 'Vanmam thavir Bot',
         'footer': 'Powered By Rypera'
     },
     'status': {
