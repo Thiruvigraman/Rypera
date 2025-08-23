@@ -1,10 +1,10 @@
-#database.py
+  #database.py
 
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
 from webhook import log_to_discord
-from bot import send_message
+from telegram import send_message
 import time
 
 max_retries = 5
