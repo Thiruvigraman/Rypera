@@ -2,16 +2,16 @@
 
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
-from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS
-from webhook import log_to_discord
+from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
+from webhook import log_to_discord, log_to_betterstack
+from bot import send_message
 import time
 
-# MongoDB Setup with retry
-max_retries = 3
+max_retries = 5
 for attempt in range(max_retries):
     try:
-        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        client.server_info()  # Force connection to test
+        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
+        client.server_info()
         db = client['telegram_bot']
         movies_collection = db['movies']
         users_collection = db['users']
@@ -19,18 +19,20 @@ for attempt in range(max_retries):
         sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
         users_collection.create_index([("user_id", 1)], unique=True)
         log_to_discord(
-    DISCORD_WEBHOOK_STATUS,
-    """🚀 Bot is **Online**
-🟢 MongoDB connected **Successfully**
-🔔 Logging activity to **Discord**.""",
-    log_type='startup'
-)
+            DISCORD_WEBHOOK_STATUS,
+            "Bot is online\nMongoDB connected successfully\nLogging activity to Discord",
+            log_type='startup',
+            severity='info'
+        )
+        log_to_betterstack("mongodb_connected", {})
         break
     except ConnectionFailure as e:
         if attempt == max_retries - 1:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {str(e)}", log_type='status')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {str(e)}", log_type='status', severity='error')
+            log_to_betterstack("mongodb_connection_failure", {"error": str(e)})
+            send_message(ADMIN_ID, "Critical: MongoDB connection failed. Bot is down")
             raise
-        time.sleep(5)
+        time.sleep(10)
 
 def load_movies():
     try:
@@ -39,21 +41,24 @@ def load_movies():
             movies[doc['name']] = {"file_id": doc['file_id']}
         return movies
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error loading movies: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error loading movies: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("load_movies_error", {"error": str(e)})
         raise
 
 def save_movie(name, file_id):
     try:
         movies_collection.update_one({"name": name}, {"$set": {"file_id": file_id}}, upsert=True)
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error saving movie {name}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error saving movie {name}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("save_movie_error", {"name": name, "error": str(e)})
         raise
 
 def delete_movie(name):
     try:
         movies_collection.delete_one({"name": name})
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting movie {name}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting movie {name}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("delete_movie_error", {"name": name, "error": str(e)})
         raise
 
 def rename_movie(old_name, new_name):
@@ -65,7 +70,8 @@ def rename_movie(old_name, new_name):
             return True
         return False
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error renaming movie {old_name} to {new_name}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error renaming movie {old_name} to {new_name}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("rename_movie_error", {"old_name": old_name, "new_name": new_name, "error": str(e)})
         raise
 
 def add_user(user_id, display_name):
@@ -76,14 +82,16 @@ def add_user(user_id, display_name):
             upsert=True
         )
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error adding user {user_id}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error adding user {user_id}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("add_user_error", {"user_id": user_id, "error": str(e)})
         raise
 
 def get_all_users():
     try:
         return list(users_collection.find({}, {"user_id": 1, "display_name": 1, "_id": 0}))
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error retrieving users: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error retrieving users: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("get_users_error", {"error": str(e)})
         raise
 
 def get_stats():
@@ -92,7 +100,8 @@ def get_stats():
         user_count = users_collection.count_documents({})
         return {"movie_count": movie_count, "user_count": user_count}
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error getting stats: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error getting stats: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("get_stats_error", {"error": str(e)})
         raise
 
 def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
@@ -104,7 +113,8 @@ def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
             "timestamp": timestamp
         })
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error saving sent file for chat {chat_id}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error saving sent file for chat {chat_id}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("save_sent_file_error", {"chat_id": chat_id, "error": str(e)})
         raise
 
 def get_pending_files(expiry_minutes=15):
@@ -112,12 +122,14 @@ def get_pending_files(expiry_minutes=15):
         cutoff = time.time() - (expiry_minutes * 60)
         return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error getting pending files: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error getting pending files: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("get_pending_files_error", {"error": str(e)})
         raise
 
 def delete_sent_file_record(chat_id, file_message_id):
     try:
         sent_files_collection.delete_one({"chat_id": chat_id, "file_message_id": file_message_id})
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting sent file record for chat {chat_id}: {str(e)}", log_type='status')
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting sent file record for chat {chat_id}: {str(e)}", log_type='status', severity='error')
+        log_to_betterstack("delete_sent_file_record_error", {"chat_id": chat_id, "error": str(e)})
         raise
