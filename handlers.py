@@ -2,11 +2,12 @@
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
-from bot import send_file, send_announcement
+from bot import send_file, send_announcement, forward_file_to_storage
 from telegram import send_message
 from webhook import log_to_discord
 import time
 import psutil
+import requests
 
 TEMP_FILE_IDS = {}
 
@@ -35,7 +36,9 @@ def process_update(update):
         text = message.get('text', '')
         document = message.get('document')
         video = message.get('video')
-        forward_from = message.get('forward_from') or message.get('forward_from_chat') or message.get('forward_from_message_id')
+        forward_from = message.get('forward_from')
+        forward_from_chat = message.get('forward_from_chat')
+        forward_from_message_id = message.get('forward_from_message_id')
 
         if not chat_id or not user_id:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "Missing chat_id or user_id in update", log_type='status', severity='error')
@@ -45,20 +48,16 @@ def process_update(update):
         if text:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Command {text} received from {display_name} (ID: {user_id})", log_type='status', severity='debug')
 
-        if user_id != ADMIN_ID:
-            add_user(user_id, display_name)
+        add_user(user_id, display_name)
 
         # Handle forwarded or directly sent files from admins
         if (document or video) and user_id == ADMIN_ID:
             file_id = document['file_id'] if document else video['file_id'] if video else None
             if file_id:
-                file_info = requests.get(f'https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}').json()
-                if not file_info.get('ok'):
-                    send_message(chat_id, "Error retrieving file info")
-                    log_to_discord(DISCORD_WEBHOOK_STATUS, "Error retrieving file info", log_type='status', severity='error')
-                    return
-                TEMP_FILE_IDS[chat_id] = file_id
-                source = "forwarded" if forward_from else "uploaded"
+                from_chat_id = forward_from_chat.get('id') if forward_from_chat else None
+                message_id = forward_from_message_id if forward_from_message_id else None
+                TEMP_FILE_IDS[chat_id] = {'file_id': file_id, 'from_chat_id': from_chat_id, 'message_id': message_id}
+                source = "forwarded" if forward_from or forward_from_chat else "uploaded"
                 send_message(chat_id, f"Please send the name for the {source} file")
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"{source.capitalize()} file received from {display_name} (ID: {user_id})", log_type='status', severity='info')
             else:
@@ -68,19 +67,38 @@ def process_update(update):
 
         # Save file name provided by admin
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
-            save_movie(text, TEMP_FILE_IDS[chat_id])
-            send_message(chat_id, f"File '{text}' has been added")
-            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"File added: {text}", log_type='list_logs', severity='info')
+            file_data = TEMP_FILE_IDS[chat_id]
+            storage_message_id = forward_file_to_storage(file_data['file_id'], file_data['from_chat_id'], file_data['message_id'])
+            if storage_message_id:
+                save_movie(text, file_data['file_id'])
+                send_message(chat_id, f"File '{text}' has been added")
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"File added: {text}", log_type='list_logs', severity='info')
+            else:
+                send_message(chat_id, "Error storing file in storage chat")
             del TEMP_FILE_IDS[chat_id]
             return
 
-        # Restrict all commands to admins
-        if user_id != ADMIN_ID and text.startswith('/'):
+        # Restrict commands (except /start movie_name) to admins
+        if user_id != ADMIN_ID and text.startswith('/') and not text.startswith('/start '):
             send_message(chat_id, "Error: You are not authorized to use this command")
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Unauthorized command attempt by {display_name} (ID: {user_id}): {text}", log_type='status', severity='warning')
             return
 
+        # Handle /start movie_name for all users (deep link access)
+        if text.startswith('/start '):
+            movie_name = text.replace('/start ', '').replace('_', ' ')
+            movies = load_movies()
+            if movie_name in movies and 'file_id' in movies[movie_name]:
+                send_file(chat_id, movies[movie_name]['file_id'])
+                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed file: {movie_name}", log_type='file_access', severity='info')
+            else:
+                send_message(chat_id, f"File '{movie_name}' not found")
+            return
+
         # Admin-only commands
+        if user_id != ADMIN_ID:
+            return  # Silently ignore non-admin commands after /start check
+
         if text == '/list_files':
             movies = load_movies()
             msg = "Stored Files:\n" + "\n".join(movies.keys()) if movies else "No files stored"
@@ -232,21 +250,7 @@ def process_update(update):
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent: {success_count} success, {failed_count} failed", log_type='list_logs', severity='info')
             return
 
-        if text.startswith('/start '):
-            if user_id != ADMIN_ID:
-                send_message(chat_id, "Error: You are not authorized to use this command")
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Unauthorized file access attempt by {display_name} (ID: {user_id}): {text}", log_type='status', severity='warning')
-                return
-            movie_name = text.replace('/start ', '').replace('_', ' ')
-            movies = load_movies()
-            if movie_name in movies and 'file_id' in movies[movie_name]:
-                display_name = get_user_display_name(user)
-                send_file(chat_id, movies[movie_name]['file_id'])
-                log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed file: {movie_name}", log_type='file_access', severity='info')
-            else:
-                send_message(chat_id, f"File '{movie_name}' not found")
-            return
-
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error processing update: {str(e)}", log_type='status', severity='error')
+        send_message(chat_id, f"Error processing your request: {str(e)}")
         raise
