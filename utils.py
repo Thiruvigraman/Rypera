@@ -1,7 +1,7 @@
 #utils.py
 
 from database import get_pending_files, delete_sent_file_record
-from telegram import delete_user_messages
+from bot import delete_user_messages
 from webhook import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS
 
