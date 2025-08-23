@@ -24,13 +24,31 @@ def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage.", log_type='status', severity='warning')
         return None
-    # Validate STORAGE_CHAT_ID format (should be a negative number for channels or positive for groups)
+    # Validate STORAGE_CHAT_ID format
     try:
         chat_id_int = int(STORAGE_CHAT_ID)
         if chat_id_int == 0:
             raise ValueError("Invalid STORAGE_CHAT_ID: 0")
+        # For channels, Telegram requires -100 prefix
+        if str(STORAGE_CHAT_ID).startswith('-') and not str(STORAGE_CHAT_ID).startswith('-100'):
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid STORAGE_CHAT_ID format: {STORAGE_CHAT_ID}. Channels require -100 prefix.", log_type='status', severity='error')
+            return None
     except ValueError:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid STORAGE_CHAT_ID format: {STORAGE_CHAT_ID}", log_type='status', severity='error')
+        return None
+    # Test bot permissions in the chat
+    test_url = f'https://api.telegram.org/bot{BOT_TOKEN}/getChat'
+    try:
+        response = requests.post(test_url, json={'chat_id': STORAGE_CHAT_ID}, timeout=10)
+        response.raise_for_status()
+        chat_data = response.json()
+        if not chat_data.get('ok'):
+            error_description = chat_data.get('description', 'Unknown error')
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cannot access storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
+            return None
+    except requests.exceptions.RequestException as e:
+        error_description = e.response.json().get('description', str(e)) if e.response else str(e)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error accessing storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
         return None
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
@@ -56,13 +74,11 @@ def forward_file_to_storage(file_id):
 
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
-    # Attempt to forward file to storage chat
     storage_message_id = forward_file_to_storage(file_id)
     if not storage_message_id:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "Failed to store file in storage chat, proceeding with direct send.", log_type='status', severity='warning')
     else:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"File successfully stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-    # Send file to user
     payload = {'chat_id': chat_id, 'document': file_id}
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -79,7 +95,6 @@ def send_file(chat_id, file_id):
             warning_message_id = warning_response.get('result', {}).get('message_id')
             if warning_message_id:
                 save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-                # Start timer in a separate thread to delete messages after 15 minutes
                 threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id]).start()
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"File sent to chat {chat_id}", log_type='status', severity='info')
             else:
@@ -110,7 +125,7 @@ def send_announcement(user_ids, message, parse_mode=None):
         try:
             send_message(user_id, message, parse_mode)
             success_count += 1
-            time.sleep(0.1)  # Rate limiting
+            time.sleep(0.1)
         except Exception as e:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
             failed_count += 1
