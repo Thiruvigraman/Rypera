@@ -13,39 +13,34 @@ DISCORD_WEBHOOK_LIST_LOGS = os.getenv('DISCORD_WEBHOOK_LIST_LOGS')
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGODB_URI')
 STORAGE_CHAT_ID = os.getenv('STORAGE_CHAT_ID')
+BETTERSTACK_ENDPOINT = os.getenv('BETTERSTACK_ENDPOINT')
 
-if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID]):
+if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID, BETTERSTACK_ENDPOINT]):
     raise ValueError("Missing environment variables")
 
 ADMIN_ID = int(ADMIN_ID)
 STORAGE_CHAT_ID = int(STORAGE_CHAT_ID)
 
-
 EMBED_CONFIG = {
     'default': {
-        'color': 0x7289DA,  # Blurple fallback
+        'color': 0x7289DA,
         'author': 'Telegram Bot',
-        'footer': 'Created by Thiru',
-        'emoji': 'ℹ️'  
+        'footer': 'Created by Thiru'
     },
     'status': {
-        'color': 0xFF0000,  
-        'title': 'Bot Status Update',
-        'emoji': '🛑'  
+        'color': 0xFF0000,
+        'title': 'Bot Status Update'
     },
     'startup': {
-        'color': 0x00FF00,  
-        'title': 'Bot Startup',
-        'emoji': '✅'  
+        'color': 0x00FF00,
+        'title': 'Bot Startup'
     },
     'list_logs': {
         'color': 0x800080,
-        'title': 'Admin Action Log',
-        'emoji': '👑'  
+        'title': 'Admin Action Log'
     },
     'file_access': {
         'color': 0xFFFF00,
-        'title': 'File Access Log',
-        'emoji': '📂'  
+        'title': 'File Access Log'
     }
 }
