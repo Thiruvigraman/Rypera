@@ -1,86 +1,71 @@
-   #bot.py
+#bot.py
 
-import requests
-import threading
-import time
-from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID
-from database import save_sent_file, delete_sent_file_record
+from config import BOT_TOKEN, STORAGE_CHAT_ID, DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_FILE_ACCESS
 from telegram import send_message
 from webhook import log_to_discord
+import requests
+import os
 
-def forward_file_to_storage(file_id):
+def forward_file_to_storage(file_id, from_chat_id=None, message_id=None):
     if not STORAGE_CHAT_ID:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage", log_type='status', severity='warning')
         return None
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
-    payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
     try:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Starting file upload to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        message_data = response.json()
-        if message_data.get('ok'):
-            storage_message_id = message_data['result']['message_id']
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-            return storage_message_id
-        else:
-            error_description = message_data.get('description', 'Unknown error')
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
-            return None
+        if from_chat_id and message_id:  # Forwarded file
+            url = f'https://api.telegram.org/bot{BOT_TOKEN}/forwardMessage'
+            payload = {
+                'chat_id': STORAGE_CHAT_ID,
+                'from_chat_id': from_chat_id,
+                'message_id': message_id
+            }
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Forwarding file to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            message_data = response.json()
+            if message_data.get('ok'):
+                storage_message_id = message_data['result']['message_id']
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"File forwarded to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
+                return storage_message_id
+        else:  # New upload
+            file_info = requests.get(f'https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}').json()
+            if not file_info.get('ok'):
+                log_to_discord(DISCORD_WEBHOOK_STATUS, "Error retrieving file info for upload", log_type='status', severity='error')
+                return None
+            file_path = file_info['result']['file_path']
+            file_url = f'https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}'
+            file_response = requests.get(file_url)
+            file_response.raise_for_status()
+            url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
+            files = {'document': ('file', file_response.content)}
+            data = {'chat_id': STORAGE_CHAT_ID}
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Uploading file to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
+            response = requests.post(url, data=data, files=files)
+            response.raise_for_status()
+            message_data = response.json()
+            if message_data.get('ok'):
+                storage_message_id = message_data['result']['message_id']
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"File uploaded to storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
+                return storage_message_id
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {str(e)}", log_type='status', severity='error')
         return None
 
 def send_file(chat_id, file_id):
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
-    storage_message_id = forward_file_to_storage(file_id)
-    if not storage_message_id:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Failed to store file in storage chat, proceeding with direct send", log_type='status', severity='warning')
-    else:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-
-    payload = {'chat_id': chat_id, 'document': file_id}
     try:
+        message_data = send_message(chat_id, "Sending your file, it will be deleted in 15 minutes", parse_mode="Markdown")
+        message_id = message_data.get('result', {}).get('message_id')
+        if message_id:
+            from database import save_sent_file
+            save_sent_file(chat_id, message_id)
+        url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
+        payload = {'chat_id': chat_id, 'document': file_id}
         response = requests.post(url, json=payload)
         response.raise_for_status()
         message_data = response.json()
-
         if message_data.get('ok'):
             file_message_id = message_data['result']['message_id']
-            warning_text = (
-                "IMPORTANT\n\n"
-                "This message will be deleted in 15 minutes.\n\n"
-                "Forward this file to another chat to keep it downloadable."
-            )
-            warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
-            warning_message_id = warning_response.get('result', {}).get('message_id')
-
-            if warning_message_id:
-                save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-                threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id]).start()
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"File sent to chat {chat_id}", log_type='status', severity='info')
-            else:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending warning message to chat {chat_id}", log_type='status', severity='error')
-        return message_data
+            save_sent_file(chat_id, file_message_id)
+            log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"File sent to chat_id {chat_id}, message_id {file_message_id}", log_type='file_access', severity='info')
     except Exception as e:
-        error_msg = f"Error sending file to chat {chat_id}: {str(e)}"
-        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status', severity='error')
-        send_message(chat_id, error_msg)
-        return {'ok': False, 'error': str(e)}
-
-def send_announcement(user_ids, message, parse_mode=None):
-    success_count = 0
-    failed_count = 0
-    for user_id in user_ids:
-        for attempt in range(3):
-            try:
-                send_message(user_id, message, parse_mode)
-                success_count += 1
-                time.sleep(0.2)
-                break
-            except Exception as e:
-                if attempt == 2:
-                    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
-                    failed_count += 1
-                time.sleep(1)
-    return success_count, failed_count
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending file to chat_id {chat_id}: {str(e)}", log_type='status', severity='error')
+        send_message(chat_id, f"Error sending file: {str(e)}")
