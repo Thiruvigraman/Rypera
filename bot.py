@@ -6,7 +6,6 @@ import time
 from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID
 from database import save_sent_file, delete_sent_file_record, get_pending_files
 from webhook import log_to_discord
-from utils import cleanup_pending_files
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -14,7 +13,7 @@ def send_message(chat_id, text, parse_mode=None):
     if parse_mode:
         payload['parse_mode'] = parse_mode
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -25,10 +24,18 @@ def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
         log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage.", log_type='status', severity='warning')
         return None
+    # Validate STORAGE_CHAT_ID format (should be a negative number for channels or positive for groups)
+    try:
+        chat_id_int = int(STORAGE_CHAT_ID)
+        if chat_id_int == 0:
+            raise ValueError("Invalid STORAGE_CHAT_ID: 0")
+    except ValueError:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid STORAGE_CHAT_ID format: {STORAGE_CHAT_ID}", log_type='status', severity='error')
+        return None
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         message_data = response.json()
         if message_data.get('ok'):
@@ -39,7 +46,11 @@ def forward_file_to_storage(file_id):
             error_description = message_data.get('description', 'Unknown error')
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
             return None
-    except Exception as e:
+    except requests.exceptions.HTTPError as e:
+        error_description = e.response.json().get('description', str(e)) if e.response else str(e)
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
+        return None
+    except requests.exceptions.RequestException as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {str(e)}", log_type='status', severity='error')
         return None
 
@@ -54,7 +65,7 @@ def send_file(chat_id, file_id):
     # Send file to user
     payload = {'chat_id': chat_id, 'document': file_id}
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         message_data = response.json()
         if message_data.get('ok'):
@@ -85,7 +96,7 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
     for message_id in [file_message_id, warning_message_id]:
         try:
             payload = {'chat_id': chat_id, 'message_id': message_id}
-            response = requests.post(url, json=payload)
+            response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Message {message_id} deleted in chat {chat_id}", log_type='status', severity='info')
         except Exception as e:
@@ -104,3 +115,15 @@ def send_announcement(user_ids, message, parse_mode=None):
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
             failed_count += 1
     return success_count, failed_count
+
+def cleanup_pending_files():
+    try:
+        pending_files = get_pending_files(expiry_minutes=15)
+        for file_data in pending_files:
+            try:
+                delete_user_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']}", log_type='status', severity='info')
+            except Exception as e:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {str(e)}", log_type='status', severity='error')
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {str(e)}", log_type='status', severity='error')
