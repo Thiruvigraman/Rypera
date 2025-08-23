@@ -38,7 +38,7 @@ EMBED_CONFIG = {
         'color': 0x800080,
         'title': 'Admin Action Log'
     },
-    'file_access':f
+    'file_access': {
         'color': 0xFFFF00,
         'title': 'File Access Log'
     }
