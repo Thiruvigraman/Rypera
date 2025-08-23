@@ -1,79 +1,60 @@
-   #webhook.py
+#webhook.py
 
 import requests
 import time
-from queue import Queue
-from threading import Thread
-import logging
+import queue
+import threading
 from config import DISCORD_WEBHOOK_STATUS, EMBED_CONFIG
-import os
 
-# Set up local file logging
-logging.basicConfig(
-    filename='/tmp/bot.log',
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
-
-log_queue = Queue()
-last_log_time = 0
-log_interval = 10
+# Queue for Discord logs
+log_queue = queue.Queue()
+shutdown_event = threading.Event()
 
 def log_to_discord(webhook, message, log_type='default', severity='info'):
-    if severity == 'debug' and os.getenv('LOG_LEVEL', 'info') != 'debug':
-        logging.log(
-            getattr(logging, severity.upper(), logging.INFO),
-            f"[{log_type}] {message}"
-        )
-        return
-    logging.log(
-        getattr(logging, severity.upper(), logging.INFO),
-        f"[{log_type}] {message}"
-    )
-    config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
-    embed = {
-        'description': message[:4096],
-        'color': config.get('color', 0x7289DA),
-        'author': {'name': config.get('author', 'Telegram Bot')},
-        'footer': {'text': config.get('footer', 'Powered by Rypera')},
-        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-    }
-    if 'title' in config:
-        embed['title'] = config['title']
-    log_queue.put((webhook, embed, log_type))
+    # Add log to queue
+    log_queue.put((webhook, message, log_type, severity))
 
 def process_log_queue():
-    global last_log_time
-    while True:
-        webhook, embed, log_type = log_queue.get()
-        current_time = time.time()
-        if log_type != 'file_access' and current_time - last_log_time < log_interval:
-            time.sleep(log_interval - (current_time - last_log_time))
-        for attempt in range(3):
-            try:
-                response = requests.post(webhook, json={'embeds': [embed]})
-                last_log_time = current_time
-                if response.status_code != 204:
-                    if webhook != DISCORD_WEBHOOK_STATUS:
-                        requests.post(DISCORD_WEBHOOK_STATUS, json={
-                            'embeds': [{
-                                'description': f"Failed to send Discord log to {webhook}: Status {response.status_code}",
-                                'color': 0xFF0000,
-                                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-                            }]
-                        })
-                break
-            except Exception as e:
-                if attempt == 2:
-                    if webhook != DISCORD_WEBHOOK_STATUS:
-                        requests.post(DISCORD_WEBHOOK_STATUS, json={
-                            'embeds': [{
-                                'description': f"Error sending Discord log to {webhook}: {str(e)}",
-                                'color': 0xFF0000,
-                                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-                            }]
-                        })
-                time.sleep(2)
-        log_queue.task_done()
+    while not shutdown_event.is_set():
+        try:
+            # Get log from queue with a timeout to check for shutdown
+            webhook, message, log_type, severity = log_queue.get(timeout=1)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    config = EMBED_CONFIG.get(log_type, EMBED_CONFIG['default'])
+                    default_config = EMBED_CONFIG['default']
+                    formatted_message = message[:4096]  # Discord embed description limit
+                    embed = {
+                        'description': f"[{severity.upper()}] {formatted_message}",
+                        'color': config.get('color', default_config.get('color', 0x7289DA)),
+                        'author': {'name': config.get('author', default_config.get('author', 'Telegram Bot'))},
+                        'footer': {'text': config.get('footer', default_config.get('footer', 'Powered by Rypera'))},
+                        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+                    }
+                    if 'title' in config:
+                        embed['title'] = config['title']
+                    response = requests.post(webhook, json={'embeds': [embed]})
+                    if response.status_code == 429:  # Rate limit
+                        retry_after = response.json().get('retry_after', 2) / 1000  # Convert ms to seconds
+                        time.sleep(retry_after)
+                        continue
+                    response.raise_for_status()
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1 and webhook != DISCORD_WEBHOOK_STATUS:
+                        error_msg = f"Failed to send Discord log to {webhook} after {max_retries} attempts: {str(e)}"
+                        log_queue.put((DISCORD_WEBHOOK_STATUS, error_msg, 'status', 'error'))
+                    time.sleep(2)  # Delay between retries
+            log_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            # Avoid infinite loop if queue processing fails
+            log_queue.task_done()
+            if not shutdown_event.is_set():
+                log_queue.put((DISCORD_WEBHOOK_STATUS, f"Error in log queue processing: {str(e)}", 'status', 'error'))
 
-Thread(target=process_log_queue, daemon=True).start()
+# Start the log queue processor thread
+log_processor_thread = threading.Thread(target=process_log_queue, daemon=True)
+log_processor_thread.start()
