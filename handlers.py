@@ -2,7 +2,8 @@
 
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
-from bot import send_message, send_file, send_announcement
+from bot import send_file, send_announcement
+from telegram import send_message
 from webhook import log_to_discord
 import time
 import psutil
