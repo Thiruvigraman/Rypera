@@ -9,7 +9,7 @@ from config import DISCORD_WEBHOOK_STATUS, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WE
 log_queue = queue.Queue()
 shutdown_event = threading.Event()
 
-# Validate webhook URLs at startup
+# Validate webhook URLs
 def validate_webhook_url(url, log_type):
     if not url:
         print(f"Debug: Webhook URL is empty for {log_type}")
@@ -57,7 +57,7 @@ def process_log_queue():
                     error_detail = e.response.text if e.response else str(e)
                     print(f"Debug: HTTP error sending log to {webhook_url} (attempt {attempt + 1}/{max_retries}): Status {status_code}, Error: {error_detail}")
                     if status_code == 429:
-                        retry_after = e.response.json().get('retry_after', 2000) / 1000  # Convert ms to seconds
+                        retry_after = e.response.json().get('retry_after', 2000) / 1000
                         print(f"Debug: Rate limited for {webhook_url}, retrying after {retry_after}s")
                         time.sleep(retry_after)
                     elif attempt == max_retries - 1:
@@ -99,7 +99,22 @@ def process_log_queue():
                 }, f"Log queue processing error: {str(e)}", 'status', 'error'))
     print("Debug: Log queue processor stopped due to shutdown")
 
-# Start the queue processor in a separate thread
+def watchdog_queue_processor():
+    print("Debug: Starting watchdog for log queue processor")
+    while not shutdown_event.is_set():
+        if not queue_thread.is_alive():
+            print("Debug: Log queue processor thread is dead, restarting")
+            global queue_thread
+            queue_thread = threading.Thread(target=process_log_queue, daemon=True)
+            queue_thread.start()
+            print("Debug: Log queue processor thread restarted")
+        time.sleep(5)
+    print("Debug: Watchdog stopped due to shutdown")
+
+# Start the queue processor and watchdog threads
 queue_thread = threading.Thread(target=process_log_queue, daemon=True)
 queue_thread.start()
 print("Debug: Log queue processor thread started")
+watchdog_thread = threading.Thread(target=watchdog_queue_processor, daemon=True)
+watchdog_thread.start()
+print("Debug: Watchdog thread started")
