@@ -24,7 +24,7 @@ EMBED_CONFIG = {
     'default': {
         'color': 0x7289DA,
         'author': 'Telegram Bot',
-        'footer': 'Created by Thiru'
+        'footer': 'Powered By Rypera'
     },
     'status': {
         'color': 0xFF0000,
