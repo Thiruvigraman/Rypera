@@ -3,7 +3,7 @@
 from config import ADMIN_ID, BOT_USERNAME, DISCORD_WEBHOOK_LIST_LOGS, DISCORD_WEBHOOK_FILE_ACCESS, DISCORD_WEBHOOK_STATUS
 from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
 from bot import send_message, send_file, send_announcement
-from webhook import log_to_discord, log_to_betterstack
+from webhook import log_to_discord
 import time
 import psutil
 
@@ -19,14 +19,12 @@ def get_user_display_name(user):
         return f"{first_name} {last_name}".strip() or "Unknown User"
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error retrieving user display name: {str(e)}", log_type='status', severity='error')
-        log_to_betterstack("get_display_name_error", {"error": str(e)})
         return "Unknown User"
 
 def process_update(update):
     try:
         if not isinstance(update, dict) or 'message' not in update:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "Invalid update received", log_type='status', severity='warning')
-            log_to_betterstack("invalid_update", {})
             return
 
         message = update.get('message', {})
@@ -39,13 +37,11 @@ def process_update(update):
 
         if not chat_id or not user_id:
             log_to_discord(DISCORD_WEBHOOK_STATUS, "Missing chat_id or user_id in update", log_type='status', severity='error')
-            log_to_betterstack("missing_id_update", {})
             return
 
         display_name = get_user_display_name(user)
         if text:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Command {text} received from {display_name} (ID: {user_id})", log_type='status', severity='debug')
-            log_to_betterstack("command_received", {"command": text, "user_id": user_id, "display_name": display_name})
 
         if user_id != ADMIN_ID:
             add_user(user_id, display_name)
@@ -57,19 +53,16 @@ def process_update(update):
                 if not file_info.get('ok'):
                     send_message(chat_id, "Error retrieving file info")
                     log_to_discord(DISCORD_WEBHOOK_STATUS, "Error retrieving file info", log_type='status', severity='error')
-                    log_to_betterstack("file_info_error", {"file_id": file_id})
                     return
                 file_size = file_info['result'].get('file_size', 0)
                 if file_size > 50 * 1024 * 1024:
                     send_message(chat_id, "File too large (max 50 MB). Please compress or split the file")
                     log_to_discord(DISCORD_WEBHOOK_STATUS, f"Oversized file rejected: {file_size} bytes", log_type='status', severity='error')
-                    log_to_betterstack("oversized_file", {"file_id": file_id, "size_bytes": file_size})
                     return
                 TEMP_FILE_IDS[chat_id] = file_id
                 send_message(chat_id, "Send the name of this movie to store it")
             else:
                 log_to_discord(DISCORD_WEBHOOK_STATUS, f"Missing file_id in document or video for chat_id: {chat_id}", log_type='status', severity='error')
-                log_to_betterstack("missing_file_id", {"chat_id": chat_id})
                 send_message(chat_id, "Error: No valid file found in the message")
             return
 
@@ -77,7 +70,6 @@ def process_update(update):
             save_movie(text, TEMP_FILE_IDS[chat_id])
             send_message(chat_id, f"Movie '{text}' has been added")
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Movie added: {text}", log_type='list_logs', severity='info')
-            log_to_betterstack("movie_added", {"name": text})
             del TEMP_FILE_IDS[chat_id]
             return
 
@@ -88,10 +80,10 @@ def process_update(update):
                 chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
                 for chunk in chunks:
                     send_message(chat_id, chunk)
-                log_to_betterstack("large_message_split", {"command": "/list_files", "length": len(msg)})
+                log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Large file list split: {len(msg)} characters", log_type='list_logs', severity='info')
             else:
                 send_message(chat_id, msg)
-            log_to_betterstack("list_files_requested", {"user_id": user_id})
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, "File list requested", log_type='list_logs', severity='info')
             return
 
         if text.startswith('/rename_file') and user_id == ADMIN_ID:
@@ -103,7 +95,6 @@ def process_update(update):
                 if rename_movie(old_name, new_name):
                     send_message(chat_id, f"Renamed '{old_name}' to '{new_name}'")
                     log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Renamed '{old_name}' to '{new_name}'", log_type='list_logs', severity='info')
-                    log_to_betterstack("movie_renamed", {"old_name": old_name, "new_name": new_name})
                 else:
                     send_message(chat_id, f"Movie '{old_name}' not found")
             return
@@ -117,7 +108,6 @@ def process_update(update):
                 delete_movie(file_name)
                 send_message(chat_id, f"Deleted '{file_name}'")
                 log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Deleted movie: {file_name}", log_type='list_logs', severity='info')
-                log_to_betterstack("movie_deleted", {"name": file_name})
             return
 
         if text.startswith('/get_movie_link') and user_id == ADMIN_ID:
@@ -132,7 +122,6 @@ def process_update(update):
                     movie_link = f"https://t.me/{BOT_USERNAME}?start={safe_name}"
                     send_message(chat_id, f"Click here to get the movie: {movie_link}")
                     log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Generated link for: {movie_name}", log_type='list_logs', severity='info')
-                    log_to_betterstack("movie_link_generated", {"name": movie_name})
                 else:
                     send_message(chat_id, f"Movie '{movie_name}' not found")
             return
@@ -141,7 +130,7 @@ def process_update(update):
             stats = get_stats()
             msg = f"Bot Statistics:\nTotal Movies: {stats['movie_count']}\nTotal Users: {stats['user_count']}"
             send_message(chat_id, msg)
-            log_to_betterstack("stats_requested", {"user_id": user_id})
+            log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, "Stats requested", log_type='list_logs', severity='info')
             return
 
         if text == '/health' and user_id == ADMIN_ID:
@@ -180,11 +169,9 @@ def process_update(update):
                     log_type='list_logs',
                     severity='info'
                 )
-                log_to_betterstack("health_check", {"uptime": uptime_str, "memory_mb": mem, "cpu_percent": cpu, "storage_used_mb": storage_used_mb})
             except Exception as e:
                 send_message(chat_id, f"Error checking health: {str(e)}")
                 log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Health check error: {str(e)}", log_type='list_logs', severity='error')
-                log_to_betterstack("health_check_error", {"error": str(e)})
             return
 
         if text == '/users' and user_id == ADMIN_ID:
@@ -199,7 +186,7 @@ def process_update(update):
                     chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
                     for chunk in chunks:
                         send_message(chat_id, chunk, parse_mode="Markdown")
-                    log_to_betterstack("large_message_split", {"command": "/users", "length": len(msg)})
+                    log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Large user list split: {len(msg)} characters", log_type='list_logs', severity='info')
                 else:
                     send_message(chat_id, msg, parse_mode="Markdown")
                 log_to_discord(
@@ -208,7 +195,6 @@ def process_update(update):
                     log_type='list_logs',
                     severity='info'
                 )
-                log_to_betterstack("user_list_requested", {"user_count": len(users)})
             except Exception as e:
                 send_message(chat_id, f"Error retrieving users: {str(e)}")
                 log_to_discord(
@@ -217,7 +203,6 @@ def process_update(update):
                     log_type='list_logs',
                     severity='error'
                 )
-                log_to_betterstack("retrieve_users_error", {"error": str(e)})
             return
 
         if text.startswith('/announce') and user_id == ADMIN_ID:
@@ -237,7 +222,6 @@ def process_update(update):
                 f"Announcement sent\nSuccess: {success_count} users\nFailed: {failed_count} users"
             )
             log_to_discord(DISCORD_WEBHOOK_LIST_LOGS, f"Announcement sent: {success_count} success, {failed_count} failed", log_type='list_logs', severity='info')
-            log_to_betterstack("announcement_sent", {"success": success_count, "failed": failed_count})
             return
 
         if text.startswith('/start '):
@@ -247,12 +231,10 @@ def process_update(update):
                 display_name = get_user_display_name(user)
                 send_file(chat_id, movies[movie_name]['file_id'])
                 log_to_discord(DISCORD_WEBHOOK_FILE_ACCESS, f"{display_name} (ID: {user_id}) accessed movie: {movie_name}", log_type='file_access', severity='info')
-                log_to_betterstack("movie_accessed", {"user_id": user_id, "movie_name": movie_name})
             else:
                 send_message(chat_id, f"Movie '{movie_name}' not found")
             return
 
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error processing update: {str(e)}", log_type='status', severity='error')
-        log_to_betterstack("process_update_error", {"error": str(e)})
         raise
