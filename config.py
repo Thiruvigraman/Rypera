@@ -1,4 +1,4 @@
-   #config.py
+#config.py
 
 import os
 from dotenv import load_dotenv
@@ -14,7 +14,7 @@ DISCORD_WEBHOOK_FILE_ACCESS = os.getenv('DISCORD_WEBHOOK_FILE_ACCESS')
 MONGODB_URI = os.getenv('MONGODB_URI')
 STORAGE_CHAT_ID = os.getenv('STORAGE_CHAT_ID')
 
-if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID]):
+if not all([BOT_TOKEN, ADMIN_ID, BOT_USERNAME, MONGODB_URI, STORAGE_CHAT_ID, DISCORD_WEBHOOK_STATUS]):
     raise ValueError("Missing environment variables")
 
 ADMIN_ID = int(ADMIN_ID)
@@ -22,9 +22,9 @@ STORAGE_CHAT_ID = int(STORAGE_CHAT_ID)
 
 EMBED_CONFIG = {
     'default': {
-        'color': 0x7289DA,
+        'color': 0x7289DA,  # Blurple fallback
         'author': 'Vanmam thavir Bot',
-        'footer': 'Powered By Rypera'
+        'footer': 'Powered by Rypera'
     },
     'status': {
         'color': 0xFF0000,
@@ -38,7 +38,7 @@ EMBED_CONFIG = {
         'color': 0x800080,
         'title': 'Admin Action Log'
     },
-    'file_access': {
+    'file_access':f
         'color': 0xFFFF00,
         'title': 'File Access Log'
     }
