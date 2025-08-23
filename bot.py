@@ -69,3 +69,16 @@ def send_file(chat_id, file_id):
     except Exception as e:
         log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending file to chat_id {chat_id}: {str(e)}", log_type='status', severity='error')
         send_message(chat_id, f"Error sending file: {str(e)}")
+
+def send_announcement(user_ids, message, parse_mode=None):
+    success_count = 0
+    failed_count = 0
+    for user_id in user_ids:
+        try:
+            send_message(user_id, message, parse_mode=parse_mode)
+            success_count += 1
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Announcement sent to user {user_id}", log_type='status', severity='info')
+        except Exception as e:
+            failed_count += 1
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to send announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
+    return success_count, failed_count
