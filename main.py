@@ -1,95 +1,80 @@
 #main.py
 
-import atexit
+from flask import Flask, request
+from handlers import process_update
+from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, PORT
+from webhook import log_to_discord
+import psutil
 import os
-import signal
 import time
 import threading
-import psutil
-from flask import Flask, request, jsonify
-from webhook import log_to_discord
-from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
+from utils import cleanup_old_messages
 
 app = Flask(__name__)
 
-start_time = time.time()
-is_shutting_down = False
-
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot is running", 200
-
-@app.route("/health", methods=["GET"])
-def health():
-    try:
-        process = psutil.Process()
-        mem = process.memory_info().rss / 1024 / 1024
-        cpu = process.cpu_percent(interval=0.1)
-        uptime = time.time() - start_time
-        return jsonify({"status": "healthy", "uptime": uptime, "memory_mb": mem, "cpu_percent": cpu})
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health endpoint error: {str(e)}", log_type='status', severity='error')
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def handle_webhook():
-    try:
-        update = request.get_json()
-        if update:
-            from handlers import process_update
-            process_update(update)
-        return jsonify(success=True)
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Webhook processing error: {str(e)}", log_type='status', severity='error')
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    if request.json.get('admin_id') == str(ADMIN_ID):
-        global is_shutting_down
-        is_shutting_down = True
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off", log_type='status', severity='info')
-        os._exit(0)
-        return jsonify({"status": "Shutting down"})
-    return jsonify({"error": "Unauthorized"}), 403
-
 def monitor_resources():
-    while not is_shutting_down:
-        process = psutil.Process()
-        mem = process.memory_info().rss / 1024 / 1024
-        cpu = process.cpu_percent(interval=0.1)
-        if mem > 400 or cpu > 80:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"High resource usage: Memory {mem:.2f} MB, CPU {cpu:.2f}%", log_type='status', severity='warning')
-        time.sleep(300)
+    while True:
+        try:
+            process = psutil.Process()
+            mem = process.memory_info().rss / 1024 / 1024
+            cpu = process.cpu_percent(interval=0.1)
+            if mem > 480:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Restarting due to high memory: {mem:.2f} MB", log_type='status', severity='warning')
+                os._exit(1)  # Trigger Render auto-restart
+            elif mem > 400 or cpu > 80:
+                log_to_discord(DISCORD_WEBHOOK_STATUS, f"High resource usage: Memory {mem:.2f} MB, CPU {cpu:.2f}%", log_type='status', severity='warning')
+        except Exception as e:
+            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error monitoring resources: {str(e)}", log_type='status', severity='error')
+        time.sleep(60)
 
 threading.Thread(target=monitor_resources, daemon=True).start()
+threading.Thread(target=cleanup_old_messages, daemon=True).start()
 
-from utils import cleanup_pending_files
-log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is online", log_type='startup', severity='info')
-try:
-    cleanup_pending_files()
-except Exception as e:
-    log_to_discord(DISCORD_WEBHOOK_STATUS, f"Startup cleanup error: {str(e)}", log_type='status', severity='error')
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def webhook():
+    try:
+        update = request.get_json()
+        process_update(update)
+        return "OK", 200
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error processing webhook: {str(e)}", log_type='status', severity='error')
+        return "Error", 500
 
-def on_exit():
-    if is_shutting_down:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off", log_type='status', severity='info')
-
-def handle_shutdown(signum, frame):
-    global is_shutting_down
-    is_shutting_down = True
-    log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot turned off", log_type='status', severity='info')
-    os._exit(0)
-
-atexit.register(on_exit)
-signal.signal(signal.SIGTERM, handle_shutdown)
-signal.signal(signal.SIGINT, handle_shutdown)
-signal.signal(signal.SIGQUIT, handle_shutdown)
-signal.signal(signal.SIGHUP, handle_shutdown)
+@app.route('/health', methods=['GET'])
+def health_check():
+    try:
+        process = psutil.Process()
+        mem = process.memory_info().rss / 1024 / 1024
+        cpu = process.cpu_percent(interval=0.1)
+        process_start_time = process.create_time()
+        uptime = time.time() - process_start_time
+        if uptime >= 86400:
+            days = int(uptime // 86400)
+            hours = int((uptime % 86400) // 3600)
+            minutes = int((uptime % 3600) // 60)
+            seconds = int(uptime % 60)
+            uptime_str = f"{days}d {hours}h {minutes}m {seconds}s"
+        else:
+            hours = int(uptime // 3600)
+            minutes = int((uptime % 3600) // 60)
+            seconds = int(uptime % 60)
+            uptime_str = f"{hours}h {minutes}m {seconds}s"
+        from database import db
+        db_stats = db.command("dbStats")
+        storage_used_mb = db_stats.get('dataSize', 0) / 1024 / 1024
+        storage_total_mb = 512
+        return (
+            f"Bot Health Check\n\n"
+            f"Uptime: {uptime_str}\n"
+            f"Memory Usage: {mem:.2f} MB\n"
+            f"CPU Usage: {cpu:.2f}%\n"
+            f"MongoDB Storage Used: {storage_used_mb:.2f} MB\n"
+            f"MongoDB Storage Total: {storage_total_mb:.2f} MB"
+        ), 200
+    except Exception as e:
+        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Health check error: {str(e)}", log_type='status', severity='error')
+        return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    try:
-        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), use_reloader=False)
-    except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Flask app crashed: {str(e)}", log_type='status', severity='error')
-        raise
+    log_to_discord(DISCORD_WEBHOOK_STATUS, "Bot is starting", log_type='status', severity='info')
+    app.run(host='0.0.0.0', port=PORT)
