@@ -1,10 +1,9 @@
-#database.py 
+#database.py
 
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from config import MONGODB_URI, DISCORD_WEBHOOK_STATUS, ADMIN_ID
 from webhook import log_to_discord
-from bot import send_message
 import time
 
 # MongoDB Setup with retry
@@ -29,6 +28,8 @@ for attempt in range(max_retries):
     except ConnectionFailure as e:
         if attempt == max_retries - 1:
             log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to connect to MongoDB: {str(e)}", log_type='status', severity='error')
+            # Lazy import to avoid circular import
+            from bot import send_message
             send_message(ADMIN_ID, "Critical: MongoDB connection failed. Bot is down.")
             raise
         time.sleep(10)
