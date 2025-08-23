@@ -5,14 +5,15 @@ import os
 import signal
 import time
 import traceback
+import psutil
 from flask import Flask, request, jsonify
-from utils import cleanup_pending_files
+from bot import cleanup_pending_files
 from webhook import log_to_discord, shutdown_event
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 
 app = Flask(__name__)
 
-start_time = time.time()
+start_time = time.time()  # Global start_time for /health
 is_shutting_down = False
 
 @app.route("/", methods=["GET"])
