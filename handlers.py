@@ -10,7 +10,7 @@ from webhook import log_to_discord
 import time
 import psutil
 import requests
-from main import start_time
+from globals import start_time
 
 TEMP_FILE_IDS = {}
 PENDING_ANNOUNCEMENT = {}
