@@ -8,11 +8,16 @@ import psutil
 from flask import Flask, request, jsonify
 from bot import cleanup_pending_files
 from webhook import log_to_discord
+from config import BOT_TOKEN, ADMIN_ID
 
 app = Flask(__name__)
 
 start_time = time.time()
 is_shutting_down = False
+
+
+# ✅ STARTUP LOG (works with Gunicorn)
+log_to_discord("Bot started", "status", "info")
 
 
 # ================= ROOT =================
@@ -47,7 +52,7 @@ def health():
 
 
 # ================= WEBHOOK =================
-@app.route(f"/{os.getenv('BOT_TOKEN')}", methods=["POST"])
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
         update = request.get_json()
@@ -71,8 +76,6 @@ def handle_webhook():
 # ================= SHUTDOWN =================
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
-    from config import ADMIN_ID
-
     if request.json.get("admin_id") == str(ADMIN_ID):
         global is_shutting_down
         is_shutting_down = True
@@ -84,6 +87,7 @@ def shutdown():
     return jsonify({"error": "Unauthorized"}), 403
 
 
+# ================= CLEAN EXIT =================
 def on_exit():
     if is_shutting_down:
         log_to_discord("Bot stopped", "status", "info")
@@ -106,8 +110,6 @@ signal.signal(signal.SIGINT, handle_shutdown)
 # ================= START =================
 if __name__ == "__main__":
     try:
-        log_to_discord("Bot started", "status", "info")
-
         cleanup_pending_files()
 
         app.run(
