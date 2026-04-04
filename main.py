@@ -4,6 +4,7 @@ import atexit
 import os
 import signal
 import time
+import requests
 import psutil
 from flask import Flask, request, jsonify
 from bot import cleanup_pending_files
@@ -16,17 +17,69 @@ start_time = time.time()
 is_shutting_down = False
 
 
-# ✅ STARTUP LOG (works with Gunicorn)
+# ================= AUTO WEBHOOK =================
+def set_webhook():
+    try:
+        webhook_url = os.getenv("WEBHOOK_URL")
+
+        if not webhook_url:
+            log_to_discord("WEBHOOK_URL not set", "status", "error")
+            return
+
+        # Check current webhook
+        info = requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",
+            timeout=10
+        ).json()
+
+        current_url = info.get("result", {}).get("url")
+
+        if current_url == webhook_url:
+            log_to_discord("Webhook already set", "status", "info")
+            return
+
+        # Set webhook
+        res = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url},
+            timeout=10
+        ).json()
+
+        if res.get("ok"):
+            log_to_discord(
+                "Webhook set successfully",
+                "status",
+                "info",
+                fields={"url": webhook_url}
+            )
+        else:
+            log_to_discord(
+                "Webhook setup failed",
+                "status",
+                "error",
+                fields={"response": str(res)}
+            )
+
+    except Exception as e:
+        log_to_discord(
+            "Webhook setup error",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+
+# ✅ Run on startup
+set_webhook()
 log_to_discord("Bot started", "status", "info")
 
 
-# ================= ROOT =================
+# ================= ROUTES =================
 @app.route("/", methods=["GET"])
 def home():
     return "Bot is running!", 200
 
 
-# ================= HEALTH =================
 @app.route("/health", methods=["GET"])
 def health():
     try:
@@ -51,8 +104,8 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
-# ================= WEBHOOK =================
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+# 🔥 IMPORTANT: matches your WEBHOOK_URL
+@app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
         update = request.get_json()
@@ -73,7 +126,6 @@ def handle_webhook():
         return jsonify({"error": str(e)}), 500
 
 
-# ================= SHUTDOWN =================
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
     if request.json.get("admin_id") == str(ADMIN_ID):
