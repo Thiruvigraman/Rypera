@@ -8,7 +8,7 @@ import traceback
 import psutil
 from flask import Flask, request, jsonify
 from bot import cleanup_pending_files
-from webhook import log_to_discord, shutdown_event
+from webhook import log_to_discord
 from config import DISCORD_WEBHOOK_STATUS, BOT_TOKEN, ADMIN_ID
 
 app = Flask(__name__)
