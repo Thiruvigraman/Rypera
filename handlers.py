@@ -122,24 +122,54 @@ def process_update(update):
             return
 
         # ================= HEALTH =================
-        if text == '/health' and user_id == ADMIN_ID:
-            process = psutil.Process()
+        
+if text == '/health' and user_id == ADMIN_ID:
+    try:
+        process = psutil.Process()
 
-            mem = process.memory_info().rss / 1024 / 1024
-            cpu = process.cpu_percent(interval=0.1)
-            uptime = time.time() - start_time
+        mem = process.memory_info().rss / 1024 / 1024
+        cpu = process.cpu_percent(interval=0.1)
+        uptime = time.time() - start_time
 
-            msg = (
-                f"🟢 Health\n\n"
-                f"Uptime: {int(uptime)} sec\n"
-                f"RAM: {mem:.2f} MB\n"
-                f"CPU: {cpu:.2f}%"
+        hours = int(uptime // 3600)
+        minutes = int((uptime % 3600) // 60)
+        seconds = int(uptime % 60)
+
+        uptime_str = f"{hours}h {minutes}m {seconds}s"
+
+        msg = (
+            f"🟢 Bot Health\n\n"
+            f"⏱ Uptime: {uptime_str}\n"
+            f"🧠 RAM: {mem:.2f} MB\n"
+            f"⚡ CPU: {cpu:.2f}%"
+        )
+
+        result = send_message(chat_id, msg)
+
+        if not result or not result.get("ok"):
+            log_to_discord(
+                "Health send failed",
+                "status",
+                "error",
+                fields={"response": str(result)}
             )
 
-            safe_send(chat_id, msg)
+        log_to_discord("Health checked", "list", "info")
 
-            log_to_discord("Health checked", "list", "info")
-            return
+    except Exception as e:
+        send_message(chat_id, f"Health error: {str(e)}")
+
+        log_to_discord(
+            "Health error",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+    return
+
+         
+          
 
         # ================= START =================
         if text.startswith('/start '):
