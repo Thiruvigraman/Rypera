@@ -7,6 +7,7 @@ from webhook import log_to_discord
 import time
 import psutil
 from main import start_time
+from database import rename_movie
 
 TEMP_FILE_IDS = {}
 
@@ -57,6 +58,41 @@ def process_update(update):
             log_to_discord("File uploaded", "list", "info")
             return
 
+# ===== RENAME FILE =====
+if text.startswith('/rename_file') and user_id == ADMIN_ID:
+    parts = text.split(maxsplit=2)
+
+    if len(parts) < 3:
+        safe_send(chat_id, "Usage: /rename_file OldName NewName")
+    else:
+        old_name = parts[1]
+        new_name = parts[2]
+
+        success = rename_movie(old_name, new_name)
+
+        if success:
+            safe_send(chat_id, f"Renamed '{old_name}' → '{new_name}'")
+
+            log_to_discord(
+                "File renamed",
+                "list",
+                "info",
+                fields={
+                    "old": old_name,
+                    "new": new_name
+                }
+            )
+        else:
+            safe_send(chat_id, f"Movie '{old_name}' not found")
+
+            log_to_discord(
+                "Rename failed",
+                "list",
+                "warning",
+                fields={"old": old_name}
+            )
+
+    return
         # ===== SAVE =====
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
