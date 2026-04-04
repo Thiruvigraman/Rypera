@@ -95,8 +95,11 @@ def send_with_retry(url: str, payload: dict, log_type: str):
     logging.error(f"{log_type} send failed")
 
 
-def send_in_chunks(url: str, log_type: str, entries: List[dict]):
+def send_in_chunks(log_type: str, entries: List[dict]):
+    url = webhook_map.get(log_type)
+
     if not validate_webhook_url(url):
+        logging.error(f"{log_type} webhook invalid")
         return
 
     for i in range(0, len(entries), MAX_FIELDS):
@@ -110,8 +113,7 @@ def flush(log_type: str):
     if not buffer:
         return
 
-    url = webhook_map.get(log_type)
-    send_in_chunks(url, log_type, buffer)
+    send_in_chunks(log_type, buffer)
 
     log_buffers[log_type] = []
     last_flush_time[log_type] = time.time()
@@ -123,17 +125,14 @@ def flush_all():
 
 
 def log_to_discord(
-    webhook_url: str,
     message: str,
     log_type="status",
     severity="info",
     fields: Optional[Dict[str, str]] = None,
-    force_flush: bool = False,  # ⭐ NEW
+    force_flush: bool = False,
 ):
     if log_type not in log_buffers:
         log_type = "status"
-
-    url = webhook_url or webhook_map.get(log_type)
 
     entry = {
         "message": message,
@@ -141,25 +140,22 @@ def log_to_discord(
         "fields": fields or {},
     }
 
-    # 🚨 PRIORITY (instant)
+    # 🚨 ERROR = instant send
     if severity == "error":
-        send_in_chunks(url, log_type, [entry])
+        send_in_chunks(log_type, [entry])
         return
 
     log_buffers[log_type].append(entry)
 
     now = time.time()
 
-    # ✅ auto flush by size
     if len(log_buffers[log_type]) >= BATCH_SIZE:
         flush(log_type)
         return
 
-    # ✅ auto flush by time
     if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
         flush(log_type)
         return
 
-    # ✅ manual flush trigger
     if force_flush:
         flush(log_type)
