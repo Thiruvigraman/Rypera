@@ -1,11 +1,12 @@
-#bot.py
+# file: bot.py
 
 import requests
 import threading
 import time
-from config import BOT_TOKEN, DISCORD_WEBHOOK_STATUS, STORAGE_CHAT_ID
+from config import BOT_TOKEN, STORAGE_CHAT_ID
 from database import save_sent_file, delete_sent_file_record, get_pending_files
 from webhook import log_to_discord
+
 
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
@@ -17,128 +18,171 @@ def send_message(chat_id, text, parse_mode=None):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending message to chat {chat_id}: {str(e)}", log_type='status', severity='error')
+        log_to_discord(
+            f"Error sending message",
+            "status",
+            "error",
+            fields={"chat_id": chat_id, "error": str(e)}
+        )
         return {'ok': False, 'error': str(e)}
+
 
 def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "STORAGE_CHAT_ID not set, skipping storage.", log_type='status', severity='warning')
+        log_to_discord("STORAGE_CHAT_ID not set", "status", "warning")
         return None
-    # Validate STORAGE_CHAT_ID format
-    try:
-        chat_id_int = int(STORAGE_CHAT_ID)
-        if chat_id_int == 0:
-            raise ValueError("Invalid STORAGE_CHAT_ID: 0")
-        # For channels, Telegram requires -100 prefix
-        if str(STORAGE_CHAT_ID).startswith('-') and not str(STORAGE_CHAT_ID).startswith('-100'):
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid STORAGE_CHAT_ID format: {STORAGE_CHAT_ID}. Channels require -100 prefix.", log_type='status', severity='error')
-            return None
-    except ValueError:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Invalid STORAGE_CHAT_ID format: {STORAGE_CHAT_ID}", log_type='status', severity='error')
-        return None
-    # Test bot permissions in the chat
-    test_url = f'https://api.telegram.org/bot{BOT_TOKEN}/getChat'
-    try:
-        response = requests.post(test_url, json={'chat_id': STORAGE_CHAT_ID}, timeout=10)
-        response.raise_for_status()
-        chat_data = response.json()
-        if not chat_data.get('ok'):
-            error_description = chat_data.get('description', 'Unknown error')
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cannot access storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
-            return None
-    except requests.exceptions.RequestException as e:
-        error_description = e.response.json().get('description', str(e)) if e.response else str(e)
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error accessing storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
-        return None
+
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
+
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         message_data = response.json()
+
         if message_data.get('ok'):
-            storage_message_id = message_data['result']['message_id']
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"File stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
-            return storage_message_id
-        else:
-            error_description = message_data.get('description', 'Unknown error')
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Failed to store file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
-            return None
-    except requests.exceptions.HTTPError as e:
-        error_description = e.response.json().get('description', str(e)) if e.response else str(e)
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {error_description}", log_type='status', severity='error')
+            log_to_discord("File stored in storage", "status", "info")
+            return message_data['result']['message_id']
+
+    except Exception as e:
+        log_to_discord(
+            "Storage upload failed",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
         return None
-    except requests.exceptions.RequestException as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error storing file in storage chat {STORAGE_CHAT_ID}: {str(e)}", log_type='status', severity='error')
-        return None
+
 
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
+
     storage_message_id = forward_file_to_storage(file_id)
+
     if not storage_message_id:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, "Failed to store file in storage chat, proceeding with direct send.", log_type='status', severity='warning')
-    else:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"File successfully stored in storage chat {STORAGE_CHAT_ID}", log_type='status', severity='info')
+        log_to_discord("Storage failed, direct send", "status", "warning")
+
     payload = {'chat_id': chat_id, 'document': file_id}
+
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
+
         message_data = response.json()
+
         if message_data.get('ok'):
             file_message_id = message_data['result']['message_id']
+
             warning_text = (
                 "IMPORTANT\n\n"
-                "This message will be deleted in 15 minutes.\n\n"
-                "Forward this file to another chat to keep it downloadable."
+                "This message will be deleted in 15 minutes."
             )
-            warning_response = send_message(chat_id, warning_text, parse_mode="Markdown")
+
+            warning_response = send_message(chat_id, warning_text)
             warning_message_id = warning_response.get('result', {}).get('message_id')
+
             if warning_message_id:
                 save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-                threading.Timer(900, delete_user_messages, args=[chat_id, file_message_id, warning_message_id]).start()
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"File sent to chat {chat_id}", log_type='status', severity='info')
-            else:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending warning message to chat {chat_id}", log_type='status', severity='error')
+
+                threading.Timer(
+                    900,
+                    delete_user_messages,
+                    args=[chat_id, file_message_id, warning_message_id]
+                ).start()
+
+                log_to_discord(
+                    "File sent",
+                    "access",
+                    "info",
+                    fields={"chat_id": chat_id}
+                )
+
             return message_data
+
     except Exception as e:
-        error_msg = f"Error sending file to chat {chat_id}: {str(e)}"
-        log_to_discord(DISCORD_WEBHOOK_STATUS, error_msg, log_type='status', severity='error')
-        send_message(chat_id, error_msg)
-        return {'ok': False, 'error': str(e)}
+        log_to_discord(
+            "Send file failed",
+            "status",
+            "error",
+            fields={"chat_id": chat_id, "error": str(e)}
+        )
+
 
 def delete_user_messages(chat_id, file_message_id, warning_message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
-    for message_id in [file_message_id, warning_message_id]:
+
+    for msg_id in [file_message_id, warning_message_id]:
         try:
-            payload = {'chat_id': chat_id, 'message_id': message_id}
-            response = requests.post(url, json=payload, timeout=10)
-            response.raise_for_status()
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Message {message_id} deleted in chat {chat_id}", log_type='status', severity='info')
+            requests.post(url, json={'chat_id': chat_id, 'message_id': msg_id}, timeout=10)
+
+            log_to_discord(
+                "Message deleted",
+                "status",
+                "info",
+                fields={"chat_id": chat_id, "message_id": msg_id}
+            )
+
         except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error deleting message {message_id} in chat {chat_id}: {str(e)}", log_type='status', severity='error')
+            log_to_discord(
+                "Delete failed",
+                "status",
+                "error",
+                fields={"error": str(e)}
+            )
+
     delete_sent_file_record(chat_id, file_message_id)
 
+
 def send_announcement(user_ids, message, parse_mode=None):
-    success_count = 0
-    failed_count = 0
+    success = 0
+    failed = 0
+
     for user_id in user_ids:
         try:
             send_message(user_id, message, parse_mode)
-            success_count += 1
+            success += 1
             time.sleep(0.1)
         except Exception as e:
-            log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error sending announcement to user {user_id}: {str(e)}", log_type='status', severity='error')
-            failed_count += 1
-    return success_count, failed_count
+            failed += 1
+            log_to_discord(
+                "Announcement failed",
+                "status",
+                "error",
+                fields={"user_id": user_id, "error": str(e)}
+            )
+
+    log_to_discord(
+        "Announcement summary",
+        "list",
+        "info",
+        fields={"success": success, "failed": failed}
+    )
+
+    return success, failed
+
 
 def cleanup_pending_files():
     try:
-        pending_files = get_pending_files(expiry_minutes=15)
-        for file_data in pending_files:
-            try:
-                delete_user_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']}", log_type='status', severity='info')
-            except Exception as e:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {str(e)}", log_type='status', severity='error')
+        pending_files = get_pending_files()
+
+        for f in pending_files:
+            delete_user_messages(
+                f['chat_id'],
+                f['file_message_id'],
+                f['warning_message_id']
+            )
+
+            log_to_discord(
+                "Cleanup done",
+                "status",
+                "info",
+                fields={"chat_id": f['chat_id']}
+            )
+
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {str(e)}", log_type='status', severity='error')
+        log_to_discord(
+            "Cleanup error",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
