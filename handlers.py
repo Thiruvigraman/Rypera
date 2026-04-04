@@ -1,12 +1,11 @@
 # file: handlers.py
 
-from config import ADMIN_ID, BOT_USERNAME
-from database import load_movies, save_movie, delete_movie, rename_movie, add_user, get_all_users, get_stats, db
-from bot import send_message, send_file, send_announcement
+from config import ADMIN_ID
+from database import load_movies, save_movie, delete_movie, add_user, get_stats
+from bot import send_message, send_file
 from webhook import log_to_discord
 import time
 import psutil
-import os
 from main import start_time
 
 TEMP_FILE_IDS = {}
@@ -16,9 +15,7 @@ def get_user_display_name(user):
     username = user.get('username')
     if username:
         return f"@{username}"
-    first_name = user.get('first_name', '')
-    last_name = user.get('last_name', '')
-    return f"{first_name} {last_name}".strip() or "Unknown User"
+    return user.get('first_name', 'User')
 
 
 def safe_send(chat_id, text):
@@ -47,131 +44,64 @@ def process_update(update):
 
         display_name = get_user_display_name(user)
 
-        # Track user
         if user_id != ADMIN_ID:
             add_user(user_id, display_name)
 
-        # ================= ADMIN FILE UPLOAD =================
+        # ===== UPLOAD =====
         if (document or video) and user_id == ADMIN_ID:
             file_id = document['file_id'] if document else video['file_id']
             TEMP_FILE_IDS[chat_id] = file_id
 
             safe_send(chat_id, "Send movie name")
 
-            log_to_discord(
-                "File uploaded (waiting name)",
-                "list",
-                "info",
-                fields={"admin": display_name}
-            )
+            log_to_discord("File uploaded", "list", "info")
             return
 
-        # ================= SAVE MOVIE =================
+        # ===== SAVE =====
         if user_id == ADMIN_ID and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
             del TEMP_FILE_IDS[chat_id]
 
             safe_send(chat_id, f"Movie '{text}' added")
 
-            log_to_discord(
-                "Movie added",
-                "list",
-                "info",
-                fields={"admin": display_name, "movie": text}
-            )
+            log_to_discord("Movie added", "list", "info")
             return
 
-        # ================= LIST FILES =================
-        if text == '/list_files' and user_id == ADMIN_ID:
-            movies = load_movies()
-            msg = "\n".join(movies.keys()) or "No files"
-
-            safe_send(chat_id, msg)
-
-            log_to_discord("Files listed", "list", "info")
-            return
-
-        # ================= DELETE =================
-        if text.startswith('/delete_file') and user_id == ADMIN_ID:
-            file_name = text.split(maxsplit=1)[1]
-
-            delete_movie(file_name)
-            safe_send(chat_id, f"Deleted {file_name}")
-
-            log_to_discord(
-                "File deleted",
-                "list",
-                "warning",
-                fields={"file": file_name}
-            )
-            return
-
-        # ================= STATS =================
+        # ===== STATS =====
         if text == '/stats' and user_id == ADMIN_ID:
             stats = get_stats()
 
-            msg = (
-                f"📊 Stats\n\n"
-                f"Movies: {stats['movie_count']}\n"
-                f"Users: {stats['user_count']}"
-            )
-
+            msg = f"📊 Stats\n\nMovies: {stats['movie_count']}\nUsers: {stats['user_count']}"
             safe_send(chat_id, msg)
 
             log_to_discord("Stats checked", "list", "info")
             return
 
-        # ================= HEALTH =================
-        
-if text == '/health' and user_id == ADMIN_ID:
-    try:
-        process = psutil.Process()
+        # ===== HEALTH (FIXED UPTIME) =====
+        if text == '/health' and user_id == ADMIN_ID:
+            process = psutil.Process()
 
-        mem = process.memory_info().rss / 1024 / 1024
-        cpu = process.cpu_percent(interval=0.1)
-        uptime = time.time() - start_time
+            mem = process.memory_info().rss / 1024 / 1024
+            cpu = process.cpu_percent(interval=0.1)
 
-        hours = int(uptime // 3600)
-        minutes = int((uptime % 3600) // 60)
-        seconds = int(uptime % 60)
+            uptime = time.time() - start_time
+            h = int(uptime // 3600)
+            m = int((uptime % 3600) // 60)
+            s = int(uptime % 60)
 
-        uptime_str = f"{hours}h {minutes}m {seconds}s"
-
-        msg = (
-            f"🟢 Bot Health\n\n"
-            f"⏱ Uptime: {uptime_str}\n"
-            f"🧠 RAM: {mem:.2f} MB\n"
-            f"⚡ CPU: {cpu:.2f}%"
-        )
-
-        result = send_message(chat_id, msg)
-
-        if not result or not result.get("ok"):
-            log_to_discord(
-                "Health send failed",
-                "status",
-                "error",
-                fields={"response": str(result)}
+            msg = (
+                f"🟢 Health\n\n"
+                f"Uptime: {h}h {m}m {s}s\n"
+                f"RAM: {mem:.2f} MB\n"
+                f"CPU: {cpu:.2f}%"
             )
 
-        log_to_discord("Health checked", "list", "info")
+            safe_send(chat_id, msg)
 
-    except Exception as e:
-        send_message(chat_id, f"Health error: {str(e)}")
+            log_to_discord("Health checked", "list", "info")
+            return
 
-        log_to_discord(
-            "Health error",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
-
-    return
-
-         
-          
-
-        # ================= START =================
+        # ===== START =====
         if text.startswith('/start '):
             movie_name = text.replace('/start ', '').replace('_', ' ')
             movies = load_movies()
@@ -183,20 +113,12 @@ if text == '/health' and user_id == ADMIN_ID:
                     "File accessed",
                     "access",
                     "info",
-                    fields={
-                        "user": display_name,
-                        "movie": movie_name
-                    }
+                    fields={"user": display_name, "movie": movie_name}
                 )
             else:
                 safe_send(chat_id, "Movie not found")
 
-                log_to_discord(
-                    "Access failed",
-                    "access",
-                    "warning",
-                    fields={"movie": movie_name}
-                )
+                log_to_discord("Access failed", "access", "warning")
 
     except Exception as e:
         log_to_discord(
