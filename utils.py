@@ -1,19 +1,47 @@
-#utils.py
+# file: utils.py
 
-from database import get_pending_files, delete_sent_file_record
+from database import get_pending_files
 from webhook import log_to_discord
-from config import DISCORD_WEBHOOK_STATUS
+
 
 def cleanup_pending_files():
     try:
         pending_files = get_pending_files(expiry_minutes=15)
+
         for file_data in pending_files:
             try:
-                # Lazy import to avoid circular import
-                from bot import delete_user_messages
-                delete_user_messages(file_data['chat_id'], file_data['file_message_id'], file_data['warning_message_id'])
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Cleaned up pending file in chat {file_data['chat_id']}", log_type='status', severity='info')
+                from bot import delete_user_messages  # avoid circular import
+
+                delete_user_messages(
+                    file_data['chat_id'],
+                    file_data['file_message_id'],
+                    file_data['warning_message_id']
+                )
+
+                log_to_discord(
+                    "Cleanup completed",
+                    "status",
+                    "info",
+                    fields={
+                        "chat_id": file_data['chat_id']
+                    }
+                )
+
             except Exception as e:
-                log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error cleaning up file in chat {file_data['chat_id']}: {str(e)}", log_type='status', severity='error')
+                log_to_discord(
+                    "Cleanup error (single file)",
+                    "status",
+                    "error",
+                    fields={
+                        "chat_id": file_data['chat_id'],
+                        "error": str(e)
+                    }
+                )
+
     except Exception as e:
-        log_to_discord(DISCORD_WEBHOOK_STATUS, f"Error in cleanup_pending_files: {str(e)}", log_type='status', severity='error')
+        log_to_discord(
+            "Cleanup system error",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
