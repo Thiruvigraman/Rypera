@@ -11,20 +11,38 @@ from webhook import log_to_discord
 def send_message(chat_id, text, parse_mode=None):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
+
     if parse_mode:
         payload['parse_mode'] = parse_mode
+
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        return response.json()
+        res = requests.post(url, json=payload, timeout=10)
+        data = res.json()
+
+        # 🚫 Ignore blocked users (403)
+        if not data.get("ok"):
+            error = data.get("description", "")
+
+            if "Forbidden" in error or "blocked" in error:
+                return {"ok": False, "ignored": True}
+
+            log_to_discord(
+                "Send message error",
+                "status",
+                "error",
+                fields={"chat_id": chat_id, "error": error}
+            )
+
+        return data
+
     except Exception as e:
         log_to_discord(
-            f"Error sending message",
+            "Send message crash",
             "status",
             "error",
             fields={"chat_id": chat_id, "error": str(e)}
         )
-        return {'ok': False, 'error': str(e)}
+        return {"ok": False}
 
 
 def forward_file_to_storage(file_id):
@@ -90,12 +108,7 @@ def send_file(chat_id, file_id):
                     args=[chat_id, file_message_id, warning_message_id]
                 ).start()
 
-                log_to_discord(
-                    "File sent",
-                    "access",
-                    "info",
-                    fields={"chat_id": chat_id}
-                )
+            # ✅ NO ACCESS LOG HERE (IMPORTANT)
 
             return message_data
 
@@ -113,7 +126,11 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
 
     for msg_id in [file_message_id, warning_message_id]:
         try:
-            requests.post(url, json={'chat_id': chat_id, 'message_id': msg_id}, timeout=10)
+            requests.post(
+                url,
+                json={'chat_id': chat_id, 'message_id': msg_id},
+                timeout=10
+            )
 
             log_to_discord(
                 "Message deleted",
@@ -138,24 +155,25 @@ def send_announcement(user_ids, message, parse_mode=None):
     failed = 0
 
     for user_id in user_ids:
-        try:
-            send_message(user_id, message, parse_mode)
-            success += 1
-            time.sleep(0.1)
-        except Exception as e:
-            failed += 1
-            log_to_discord(
-                "Announcement failed",
-                "status",
-                "error",
-                fields={"user_id": user_id, "error": str(e)}
-            )
+        result = send_message(user_id, message, parse_mode)
 
+        if result and result.get("ok"):
+            success += 1
+        else:
+            failed += 1
+
+        time.sleep(0.1)
+
+    # ✅ ONLY summary log (clean)
     log_to_discord(
-        "Announcement summary",
+        "📢 Announcement Summary",
         "list",
         "info",
-        fields={"success": success, "failed": failed}
+        fields={
+            "Success": success,
+            "Failed": failed,
+            "Total": success + failed
+        }
     )
 
     return success, failed
