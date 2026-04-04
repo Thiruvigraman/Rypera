@@ -19,7 +19,7 @@ from handlers import process_update
 
 app = Flask(__name__)
 
-start_time = time.time()
+from globals import start_time
 is_shutting_down = False
 mongo_status_flag = True
 
