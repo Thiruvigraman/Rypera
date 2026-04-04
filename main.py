@@ -6,6 +6,7 @@ import signal
 import time
 import requests
 import psutil
+import threading
 from flask import Flask, request, jsonify
 from bot import cleanup_pending_files
 from webhook import log_to_discord
@@ -15,6 +16,7 @@ app = Flask(__name__)
 
 start_time = time.time()
 is_shutting_down = False
+mongo_status_flag = True
 
 
 # ================= AUTO WEBHOOK =================
@@ -26,7 +28,6 @@ def set_webhook():
             log_to_discord("WEBHOOK_URL not set", "status", "error")
             return
 
-        # Check current webhook
         info = requests.get(
             f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",
             timeout=10
@@ -38,7 +39,6 @@ def set_webhook():
             log_to_discord("Webhook already set", "status", "info")
             return
 
-        # Set webhook
         res = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
             json={"url": webhook_url},
@@ -69,9 +69,103 @@ def set_webhook():
         )
 
 
-# ✅ Run on startup
+# ================= STARTUP CHECK =================
+def startup_check():
+    try:
+        from database import db, movies_collection
+
+        # Mongo
+        try:
+            db.command("ping")
+            mongo_status = "✅ Connected"
+        except Exception as e:
+            mongo_status = f"❌ Failed: {str(e)}"
+
+        # Movies
+        try:
+            movie_count = movies_collection.count_documents({})
+        except:
+            movie_count = "Error"
+
+        # RAM
+        process = psutil.Process()
+        mem = process.memory_info().rss / 1024 / 1024
+
+        # Webhook
+        webhook_url = os.getenv("WEBHOOK_URL")
+
+        try:
+            info = requests.get(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",
+                timeout=10
+            ).json()
+
+            current_url = info.get("result", {}).get("url")
+
+            webhook_status = "✅ Active" if current_url == webhook_url else "⚠️ Mismatch"
+
+        except Exception as e:
+            webhook_status = f"❌ Error: {str(e)}"
+
+        log_to_discord(
+            "🚀 Bot Startup Report",
+            "status",
+            "info",
+            fields={
+                "🤖 Bot": "Started",
+                "🗄 MongoDB": mongo_status,
+                "🌐 Webhook": webhook_status,
+                "🎬 Movies": movie_count,
+                "🧠 RAM": f"{mem:.2f} MB",
+                "⏱ Time": time.strftime("%Y-%m-%d %H:%M:%S")
+            },
+            force_flush=True
+        )
+
+    except Exception as e:
+        log_to_discord(
+            "Startup check failed",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+
+# ================= MONGO MONITOR =================
+def monitor_mongo():
+    global mongo_status_flag
+    from database import db
+
+    while True:
+        try:
+            db.command("ping")
+
+            if not mongo_status_flag:
+                log_to_discord("MongoDB reconnected", "status", "info")
+                mongo_status_flag = True
+
+        except Exception as e:
+            if mongo_status_flag:
+                log_to_discord(
+                    "MongoDB disconnected",
+                    "status",
+                    "error",
+                    fields={"error": str(e)}
+                )
+                mongo_status_flag = False
+
+        time.sleep(60)
+
+
+def start_background_monitor():
+    thread = threading.Thread(target=monitor_mongo, daemon=True)
+    thread.start()
+
+
+# ================= INIT =================
 set_webhook()
-log_to_discord("Bot started", "status", "info")
+startup_check()
+start_background_monitor()
 
 
 # ================= ROUTES =================
@@ -104,7 +198,6 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
-# 🔥 IMPORTANT: matches your WEBHOOK_URL
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
