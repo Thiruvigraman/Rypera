@@ -8,9 +8,14 @@ import requests
 import psutil
 import threading
 from flask import Flask, request, jsonify
+
 from bot import cleanup_pending_files
 from webhook import log_to_discord
 from config import BOT_TOKEN, ADMIN_ID
+
+# ✅ IMPORTANT: import at top (NOT inside route)
+from handlers import process_update
+
 
 app = Flask(__name__)
 
@@ -74,14 +79,14 @@ def startup_check():
     try:
         from database import db, movies_collection
 
-        # Mongo
+        # Mongo check
         try:
             db.command("ping")
             mongo_status = "✅ Connected"
         except Exception as e:
             mongo_status = f"❌ Failed: {str(e)}"
 
-        # Movies
+        # Movie count
         try:
             movie_count = movies_collection.count_documents({})
         except:
@@ -91,7 +96,7 @@ def startup_check():
         process = psutil.Process()
         mem = process.memory_info().rss / 1024 / 1024
 
-        # Webhook
+        # Webhook check
         webhook_url = os.getenv("WEBHOOK_URL")
 
         try:
@@ -198,13 +203,16 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
+# 🔥 MAIN WEBHOOK
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
         update = request.get_json()
 
+        # 🔥 DEBUG (optional, keep for now)
+        log_to_discord("Webhook hit", "status", "info")
+
         if update:
-            from handlers import process_update
             process_update(update)
 
         return jsonify(success=True)
@@ -226,7 +234,6 @@ def shutdown():
         is_shutting_down = True
 
         log_to_discord("Bot shutting down", "status", "warning")
-
         os._exit(0)
 
     return jsonify({"error": "Unauthorized"}), 403
@@ -243,7 +250,6 @@ def handle_shutdown(signum, frame):
     is_shutting_down = True
 
     log_to_discord("Process terminated", "status", "warning")
-
     os._exit(0)
 
 
