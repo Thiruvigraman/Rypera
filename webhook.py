@@ -1,4 +1,4 @@
-#webhook.py
+# file: webhook.py
 
 import requests
 import logging
@@ -11,9 +11,8 @@ from config import (
     DISCORD_WEBHOOK_FILE_ACCESS,
 )
 
-# ================= CONFIG =================
 BATCH_SIZE = 5
-FLUSH_INTERVAL = 5  # seconds
+FLUSH_INTERVAL = 5
 MAX_FIELDS = 25
 
 COLORS = {
@@ -22,7 +21,6 @@ COLORS = {
     "error": 0xE74C3C,
 }
 
-# ================= STORAGE =================
 log_buffers = {
     "status": [],
     "list": [],
@@ -42,12 +40,10 @@ webhook_map = {
 }
 
 
-# ================= VALIDATION =================
 def validate_webhook_url(url: str) -> bool:
     return url and url.startswith("https://discord.com/api/webhooks/")
 
 
-# ================= EMBED =================
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
@@ -76,7 +72,6 @@ def build_embed(log_type: str, entries: List[dict]):
     }
 
 
-# ================= SENDER =================
 def send_with_retry(url: str, payload: dict, log_type: str):
     delays = [1, 2, 4]
 
@@ -92,49 +87,53 @@ def send_with_retry(url: str, payload: dict, log_type: str):
                 time.sleep(retry_after)
                 continue
 
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"{log_type} error: {e}")
 
         time.sleep(delays[attempt])
 
     logging.error(f"{log_type} send failed")
 
 
-# ================= CHUNK SEND =================
-def send_in_chunks(log_type: str, entries: List[dict]):
-    url = webhook_map[log_type]
+def send_in_chunks(url: str, log_type: str, entries: List[dict]):
     if not validate_webhook_url(url):
         return
 
-    # split into chunks of 25
     for i in range(0, len(entries), MAX_FIELDS):
         chunk = entries[i:i + MAX_FIELDS]
         payload = build_embed(log_type, chunk)
         send_with_retry(url, payload, log_type)
 
 
-# ================= FLUSH =================
 def flush(log_type: str):
     buffer = log_buffers[log_type]
     if not buffer:
         return
 
-    send_in_chunks(log_type, buffer)
+    url = webhook_map.get(log_type)
+    send_in_chunks(url, log_type, buffer)
 
     log_buffers[log_type] = []
     last_flush_time[log_type] = time.time()
 
 
-# ================= MAIN LOGGER =================
+def flush_all():
+    for log_type in log_buffers:
+        flush(log_type)
+
+
 def log_to_discord(
     webhook_url: str,
     message: str,
     log_type="status",
     severity="info",
     fields: Optional[Dict[str, str]] = None,
+    force_flush: bool = False,  # ⭐ NEW
 ):
     if log_type not in log_buffers:
         log_type = "status"
+
+    url = webhook_url or webhook_map.get(log_type)
 
     entry = {
         "message": message,
@@ -142,20 +141,25 @@ def log_to_discord(
         "fields": fields or {},
     }
 
-    # 🚨 PRIORITY LOG (instant send)
+    # 🚨 PRIORITY (instant)
     if severity == "error":
-        send_in_chunks(log_type, [entry])
+        send_in_chunks(url, log_type, [entry])
         return
 
     log_buffers[log_type].append(entry)
 
     now = time.time()
 
-    # flush by size
+    # ✅ auto flush by size
     if len(log_buffers[log_type]) >= BATCH_SIZE:
         flush(log_type)
         return
 
-    # flush by time
+    # ✅ auto flush by time
     if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
+        flush(log_type)
+        return
+
+    # ✅ manual flush trigger
+    if force_flush:
         flush(log_type)
