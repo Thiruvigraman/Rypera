@@ -17,7 +17,9 @@ PENDING_ANNOUNCEMENT = {}
 
 
 def get_user_display_name(user):
-    return f"@{user['username']}" if user.get('username') else user.get('first_name', 'User')
+    if user.get('username'):
+        return f"@{user['username']}"
+    return user.get('first_name', 'User')
 
 
 def safe_send(chat_id, text):
@@ -35,7 +37,6 @@ def process_update(update):
             user_id = query["from"]["id"]
             chat_id = query["message"]["chat"]["id"]
 
-            # remove loading
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
                 json={"callback_query_id": query["id"]}
@@ -64,13 +65,11 @@ def process_update(update):
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
 
-                # Telegram summary
                 safe_send(
                     chat_id,
                     f"✅ Announcement sent\n\nSuccess: {success}\nFailed: {failed}"
                 )
 
-                # ✅ Discord summary (FIXED)
                 log_to_discord(
                     "📢 Announcement Sent",
                     "list",
@@ -81,7 +80,6 @@ def process_update(update):
                         "Total Users": success + failed
                     }
                 )
-
                 return
 
             # ===== CANCEL =====
@@ -89,11 +87,7 @@ def process_update(update):
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
                 safe_send(chat_id, "❌ Announcement cancelled")
 
-                log_to_discord(
-                    "Announcement cancelled",
-                    "list",
-                    "warning"
-                )
+                log_to_discord("Announcement cancelled", "list", "warning")
                 return
 
         # ================= MESSAGE =================
@@ -140,11 +134,7 @@ def process_update(update):
                 }
             )
 
-            log_to_discord(
-                "Announcement preview created",
-                "list",
-                "info"
-            )
+            log_to_discord("Announcement preview created", "list", "info")
             return
 
         # ===== UPLOAD =====
@@ -205,7 +195,7 @@ def process_update(update):
             log_to_discord("Health checked", "list", "info")
             return
 
-        # ===== START =====
+        # ===== START (FIXED LOGGING) =====
         if text.startswith('/start '):
             name = text.replace('/start ', '').replace('_', ' ')
             movies = load_movies()
@@ -213,15 +203,29 @@ def process_update(update):
             if name in movies:
                 send_file(chat_id, movies[name]['file_id'])
 
+                # ✅ FIXED: FULL USER LOG
                 log_to_discord(
-                    "File accessed",
+                    "🎬 File Accessed",
                     "access",
                     "info",
-                    fields={"movie": name}
+                    fields={
+                        "User": display_name,
+                        "User ID": user_id,
+                        "Movie": name
+                    }
                 )
             else:
                 safe_send(chat_id, "Movie not found")
-                log_to_discord("Access failed", "access", "warning")
+
+                log_to_discord(
+                    "❌ Access Failed",
+                    "access",
+                    "warning",
+                    fields={
+                        "User": display_name,
+                        "Movie": name
+                    }
+                )
 
     except Exception as e:
         log_to_discord(
