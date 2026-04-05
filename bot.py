@@ -92,9 +92,10 @@ def send_file(chat_id, file_id):
             file_message_id = message_data['result']['message_id']
 
             warning_text = (
-                "IMPORTANT\n\n"
-                "This message will be deleted in 15 minutes."
-            )
+    "⚠️ IMPORTANT\n\n"
+    "⏳ This file will be deleted in 15 minutes.\n\n"
+    "📌 Forward it to another chat to keep it permanently."
+)
 
             warning_response = send_message(chat_id, warning_text)
             warning_message_id = warning_response.get('result', {}).get('message_id')
