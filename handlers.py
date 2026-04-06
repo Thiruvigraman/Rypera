@@ -3,7 +3,8 @@
 from config import ADMIN_ID, BOT_TOKEN
 from database import (
     load_movies, save_movie, delete_movie,
-    add_user, get_stats, rename_movie, get_all_users
+    add_user, get_stats, rename_movie,
+    get_all_users, increment_movie_access, get_top_movies
 )
 from bot import send_message, send_file
 from webhook import log_to_discord
@@ -25,7 +26,12 @@ def get_user_display_name(user):
 def safe_send(chat_id, text):
     result = send_message(chat_id, text)
     if not result or not result.get("ok"):
-        log_to_discord("Telegram send failed", "status", "error")
+        log_to_discord(
+            "Telegram send failed",
+            "status",
+            "error",
+            fields={"chat_id": chat_id}
+        )
 
 
 def process_update(update):
@@ -42,7 +48,7 @@ def process_update(update):
                 json={"callback_query_id": query["id"]}
             )
 
-            # ===== CONFIRM =====
+            # ===== CONFIRM ANNOUNCEMENT =====
             if data == "announce_confirm" and user_id == ADMIN_ID:
                 announcement = PENDING_ANNOUNCEMENT.get(user_id)
 
@@ -54,14 +60,14 @@ def process_update(update):
                 success, failed = 0, 0
 
                 for u in users:
-                    result = send_message(u['user_id'], announcement)
+                    res = send_message(u['user_id'], announcement)
 
-                    if result and result.get("ok"):
+                    if res and res.get("ok"):
                         success += 1
                     else:
                         failed += 1
 
-                    time.sleep(0.1)
+                    time.sleep(0.05)
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
 
@@ -82,7 +88,7 @@ def process_update(update):
                 )
                 return
 
-            # ===== CANCEL =====
+            # ===== CANCEL ANNOUNCEMENT =====
             if data == "announce_cancel" and user_id == ADMIN_ID:
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
                 safe_send(chat_id, "❌ Announcement cancelled")
@@ -164,7 +170,7 @@ def process_update(update):
                 return
 
             if rename_movie(parts[1], parts[2]):
-                safe_send(chat_id, "Renamed successfully")
+                safe_send(chat_id, f"Renamed '{parts[1]}' → '{parts[2]}'")
                 log_to_discord("File renamed", "list", "info")
             else:
                 safe_send(chat_id, "Movie not found")
@@ -172,10 +178,25 @@ def process_update(update):
 
             return
 
+        # ===== TOP MOVIES =====
+        if text == '/top_movies' and user_id == ADMIN_ID:
+            top = get_top_movies()
+
+            if not top:
+                safe_send(chat_id, "No data available")
+                return
+
+            msg = "🔥 Top Movies:\n\n"
+            for i, m in enumerate(top, 1):
+                msg += f"{i}. {m['name']} — {m.get('access_count', 0)} downloads\n"
+
+            safe_send(chat_id, msg)
+            log_to_discord("Top movies checked", "list", "info")
+            return
+
         # ===== STATS =====
         if text == '/stats' and user_id == ADMIN_ID:
             s = get_stats()
-
             safe_send(chat_id, f"Movies: {s['movie_count']}\nUsers: {s['user_count']}")
             log_to_discord("Stats checked", "list", "info")
             return
@@ -191,11 +212,15 @@ def process_update(update):
             m = int((u % 3600) // 60)
             s = int(u % 60)
 
-            safe_send(chat_id, f"Uptime: {h}h {m}m {s}s\nRAM: {mem:.2f}MB\nCPU: {cpu:.2f}%")
+            safe_send(
+                chat_id,
+                f"🟢 Health\n\nUptime: {h}h {m}m {s}s\nRAM: {mem:.2f}MB\nCPU: {cpu:.2f}%"
+            )
+
             log_to_discord("Health checked", "list", "info")
             return
 
-        # ===== START (FIXED LOGGING) =====
+        # ===== START =====
         if text.startswith('/start '):
             name = text.replace('/start ', '').replace('_', ' ')
             movies = load_movies()
@@ -203,7 +228,8 @@ def process_update(update):
             if name in movies:
                 send_file(chat_id, movies[name]['file_id'])
 
-                # ✅ FIXED: FULL USER LOG
+                increment_movie_access(name)
+
                 log_to_discord(
                     "🎬 File Accessed",
                     "access",
@@ -215,7 +241,7 @@ def process_update(update):
                     }
                 )
             else:
-                safe_send(chat_id, "Movie not found")
+                safe_send(chat_id, "File not found")
 
                 log_to_discord(
                     "❌ Access Failed",
