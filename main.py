@@ -19,6 +19,7 @@ app = Flask(__name__)
 
 is_shutting_down = False
 mongo_status_flag = True
+initialized = False
 
 
 # ================= AUTO WEBHOOK =================
@@ -76,24 +77,20 @@ def startup_check():
     try:
         from database import db, movies_collection
 
-        # Mongo check
         try:
             db.command("ping")
             mongo_status = "✅ Connected"
         except Exception as e:
             mongo_status = f"❌ Failed: {str(e)}"
 
-        # Movie count
         try:
             movie_count = movies_collection.count_documents({})
         except:
             movie_count = "Error"
 
-        # RAM
         process = psutil.Process()
         mem = process.memory_info().rss / 1024 / 1024
 
-        # Webhook check
         webhook_url = os.getenv("WEBHOOK_URL")
 
         try:
@@ -164,6 +161,27 @@ def start_background_monitor():
     thread.start()
 
 
+# ================= 🔥 INSTANT STARTUP =================
+def init_system():
+    global initialized
+
+    if initialized:
+        return
+
+    initialized = True
+
+    log_to_discord("🟢 Bot is online", "status", "info")
+
+    set_webhook()
+    startup_check()
+    start_background_monitor()
+    cleanup_pending_files()
+
+
+# 🔥 RUN INIT IMMEDIATELY (IMPORTANT)
+threading.Thread(target=init_system, daemon=True).start()
+
+
 # ================= ROUTES =================
 @app.route("/", methods=["GET"])
 def home():
@@ -194,7 +212,6 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
-# ================= WEBHOOK =================
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
@@ -246,32 +263,10 @@ signal.signal(signal.SIGTERM, handle_shutdown)
 signal.signal(signal.SIGINT, handle_shutdown)
 
 
-# ================= START =================
+# ================= LOCAL RUN =================
 if __name__ == "__main__":
-    try:
-        # 🔥 Startup logs
-        log_to_discord("🟢 Bot is online", "status", "info")
-
-        # 🔥 Init systems
-        set_webhook()
-        startup_check()
-        start_background_monitor()
-
-        # 🔥 Cleanup old files
-        cleanup_pending_files()
-
-        # 🔥 Run server
-        app.run(
-            host="0.0.0.0",
-            port=int(os.getenv("PORT", 8080)),
-            use_reloader=False
-        )
-
-    except Exception as e:
-        log_to_discord(
-            "Flask crash",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
-        raise
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8080)),
+        use_reloader=False
+    )
