@@ -5,7 +5,8 @@ from database import (
     load_movies, save_movie, delete_movie,
     add_user, get_stats, rename_movie,
     get_all_users, increment_movie_access,
-    get_top_movies, get_movie_by_token
+    get_top_movies, get_movie_by_token,
+    get_db_size_mb
 )
 from bot import send_message, send_file
 from webhook import log_to_discord
@@ -34,7 +35,12 @@ def get_user_display_name(user):
 def safe_send(chat_id, text):
     result = send_message(chat_id, text)
     if not result or not result.get("ok"):
-        log_to_discord("Telegram send failed", "status", "error")
+        log_to_discord(
+            "Telegram send failed",
+            "status",
+            "error",
+            fields={"chat_id": chat_id}
+        )
 
 
 # ================= MAIN =================
@@ -177,7 +183,13 @@ def process_update(update):
 
         # ===== ANNOUNCE =====
         if text.startswith("/announce") and is_admin(user_id):
-            announcement = text.split(maxsplit=1)[1]
+            parts = text.split(maxsplit=1)
+
+            if len(parts) < 2:
+                safe_send(chat_id, "Usage: /announce message")
+                return
+
+            announcement = parts[1]
             PENDING_ANNOUNCEMENT[user_id] = announcement
 
             keyboard = {
@@ -199,7 +211,13 @@ def process_update(update):
 
         # ===== DELETE MOVIE =====
         if text.startswith("/delete_movie") and is_admin(user_id):
-            movie = text.split(maxsplit=1)[1]
+            parts = text.split(maxsplit=1)
+
+            if len(parts) < 2:
+                safe_send(chat_id, "Usage: /delete_movie MovieName")
+                return
+
+            movie = parts[1]
             movies = load_movies()
 
             if movie not in movies:
@@ -234,6 +252,7 @@ def process_update(update):
         # ===== RENAME =====
         if text.startswith("/rename_file") and is_admin(user_id):
             parts = text.split(maxsplit=2)
+
             if len(parts) < 3:
                 safe_send(chat_id, "Usage: /rename_file old new")
                 return
@@ -247,7 +266,11 @@ def process_update(update):
         # ===== TOP =====
         if text == "/top_movies" and is_admin(user_id):
             top = get_top_movies()
-            msg = "\n".join([f"{i+1}. {m['name']} ({m.get('access_count',0)})" for i,m in enumerate(top)])
+
+            msg = "🔥 Top Movies:\n\n"
+            for i, m in enumerate(top, 1):
+                msg += f"{i}. {m['name']} — {m.get('access_count', 0)} downloads\n"
+
             safe_send(chat_id, msg)
             return
 
@@ -260,27 +283,47 @@ def process_update(update):
         # ===== HEALTH =====
         if text == "/health" and is_admin(user_id):
             p = psutil.Process()
-            safe_send(chat_id, f"RAM: {p.memory_info().rss/1024/1024:.2f}MB")
+
+            mem = p.memory_info().rss / 1024 / 1024
+            cpu = p.cpu_percent(interval=0.1)
+
+            uptime = time.time() - start_time
+            h = int(uptime // 3600)
+            m = int((uptime % 3600) // 60)
+            s = int(uptime % 60)
+
+            db_size = get_db_size_mb()
+
+            msg = (
+                f"🟢 Health\n\n"
+                f"⏱ Uptime: {h}h {m}m {s}s\n"
+                f"🧠 RAM: {mem:.2f} MB\n"
+                f"⚡ CPU: {cpu:.2f}%\n"
+                f"🗄 MongoDB: {db_size} MB / 512 MB"
+            )
+
+            safe_send(chat_id, msg)
             return
 
         # ===== UPLOAD =====
         if (document or video) and is_admin(user_id):
             file_id = document["file_id"] if document else video["file_id"]
             TEMP_FILE_IDS[chat_id] = file_id
-            safe_send(chat_id, "Send name")
+            safe_send(chat_id, "Send movie name")
             return
 
         # ===== SAVE =====
         if is_admin(user_id) and chat_id in TEMP_FILE_IDS and text:
             save_movie(text, TEMP_FILE_IDS[chat_id])
             TEMP_FILE_IDS.pop(chat_id)
-            safe_send(chat_id, "Saved")
+            safe_send(chat_id, f"Movie '{text}' added")
             return
 
         # ===== START =====
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
 
+            # 🔐 TOKEN FIRST
             movie = get_movie_by_token(query)
 
             if movie:
@@ -288,6 +331,7 @@ def process_update(update):
                 increment_movie_access(movie["name"])
                 return
 
+            # 🔁 FALLBACK OLD LINKS
             name = query.replace("_", " ")
             movies = load_movies()
 
@@ -296,7 +340,12 @@ def process_update(update):
                 increment_movie_access(name)
                 return
 
-            safe_send(chat_id, "Invalid link")
+            safe_send(chat_id, "❌ Invalid or expired link")
 
     except Exception as e:
-        log_to_discord("Handler crash", "status", "error")
+        log_to_discord(
+            "Handler crash",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
