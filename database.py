@@ -33,8 +33,11 @@ for attempt in range(max_retries):
         users_collection = db['users']
         sent_files_collection = db['sent_files']
 
+        # indexes
         sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
         users_collection.create_index([("user_id", 1)], unique=True)
+        movies_collection.create_index([("name", 1)], unique=True)
+        movies_collection.create_index([("token", 1)], unique=True)
 
         log_to_discord("MongoDB connected", "status", "info")
         break
@@ -56,6 +59,11 @@ for attempt in range(max_retries):
         time.sleep(5)
 
 
+# ================= DB STATUS =================
+def is_db_available():
+    return MONGO_AVAILABLE
+
+
 # ================= MOVIES =================
 def load_movies():
     if not MONGO_AVAILABLE:
@@ -72,12 +80,16 @@ def load_movies():
             )
         }
     except Exception as e:
-        log_to_discord("Load movies failed", "status", "error")
+        log_to_discord("Load movies failed", "status", "error", fields={"error": str(e)})
         return {}
 
 
 def save_movie(name, file_id):
+    if not name or not file_id:
+        return None
+
     try:
+        # prevent duplicate token collision
         token = generate_token()
 
         movies_collection.update_one(
@@ -95,22 +107,31 @@ def save_movie(name, file_id):
         return token
 
     except Exception as e:
-        log_to_discord("Save movie failed", "status", "error")
+        log_to_discord(
+            "Save movie failed",
+            "status",
+            "error",
+            fields={"movie": name, "error": str(e)}
+        )
         return None
 
 
 def get_movie_by_token(token):
+    if not token:
+        return None
+
     try:
         return movies_collection.find_one({"token": token})
-    except:
+    except Exception as e:
+        log_to_discord("Token lookup failed", "status", "error")
         return None
 
 
 def delete_movie(name):
     try:
         movies_collection.delete_one({"name": name})
-    except:
-        pass
+    except Exception as e:
+        log_to_discord("Delete movie failed", "status", "error")
 
 
 def rename_movie(old_name, new_name):
@@ -131,7 +152,8 @@ def rename_movie(old_name, new_name):
 
         return True
 
-    except:
+    except Exception as e:
+        log_to_discord("Rename failed", "status", "error", fields={"error": str(e)})
         return False
 
 
@@ -143,8 +165,8 @@ def increment_movie_access(name):
             {"$inc": {"access_count": 1}},
             upsert=True
         )
-    except:
-        pass
+    except Exception as e:
+        log_to_discord("Access increment failed", "status", "error")
 
 
 def get_top_movies(limit=5):
@@ -155,7 +177,8 @@ def get_top_movies(limit=5):
             .sort("access_count", -1)
             .limit(limit)
         )
-    except:
+    except Exception as e:
+        log_to_discord("Top movies failed", "status", "error")
         return []
 
 
@@ -167,14 +190,15 @@ def add_user(user_id, display_name):
             {"$set": {"user_id": user_id, "display_name": display_name}},
             upsert=True
         )
-    except:
-        pass
+    except Exception as e:
+        log_to_discord("Add user failed", "status", "error")
 
 
 def get_all_users():
     try:
         return list(users_collection.find({}, {"user_id": 1, "_id": 0}))
-    except:
+    except Exception as e:
+        log_to_discord("Get users failed", "status", "error")
         return []
 
 
@@ -184,7 +208,8 @@ def get_stats():
             "movie_count": movies_collection.count_documents({}),
             "user_count": users_collection.count_documents({})
         }
-    except:
+    except Exception as e:
+        log_to_discord("Stats failed", "status", "error")
         return {"movie_count": 0, "user_count": 0}
 
 
@@ -197,15 +222,16 @@ def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
             "warning_message_id": warning_message_id,
             "timestamp": timestamp
         })
-    except:
-        pass
+    except Exception as e:
+        log_to_discord("Save sent file failed", "status", "error")
 
 
 def get_pending_files(expiry_minutes=15):
     try:
         cutoff = time.time() - (expiry_minutes * 60)
         return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
-    except:
+    except Exception as e:
+        log_to_discord("Get pending failed", "status", "error")
         return []
 
 
@@ -215,8 +241,8 @@ def delete_sent_file_record(chat_id, file_message_id):
             "chat_id": chat_id,
             "file_message_id": file_message_id
         })
-    except:
-        pass
+    except Exception as e:
+        log_to_discord("Delete record failed", "status", "error")
 
 
 # ================= DB SIZE =================
