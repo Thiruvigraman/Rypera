@@ -3,15 +3,56 @@
 import requests
 import threading
 import time
+from collections import defaultdict
+
 from config import BOT_TOKEN, STORAGE_CHAT_ID
 from database import save_sent_file, delete_sent_file_record, get_pending_files
 from webhook import log_to_discord
+
+
+# ================= RATE LIMIT =================
+USER_LAST_REQUEST = defaultdict(float)
+RATE_LIMIT_SECONDS = 2
+
+
+def is_rate_limited(chat_id):
+    now = time.time()
+
+    if now - USER_LAST_REQUEST[chat_id] < RATE_LIMIT_SECONDS:
+        return True
+
+    USER_LAST_REQUEST[chat_id] = now
+    return False
+
+
+# ================= DUPLICATE SEND GUARD =================
+RECENT_SENDS = {}
+DUPLICATE_WINDOW = 5  # seconds
+
+
+def is_duplicate_send(chat_id, file_id):
+    key = f"{chat_id}:{file_id}"
+    now = time.time()
+
+    if key in RECENT_SENDS and now - RECENT_SENDS[key] < DUPLICATE_WINDOW:
+        return True
+
+    RECENT_SENDS[key] = now
+
+    # cleanup memory
+    if len(RECENT_SENDS) > 5000:
+        RECENT_SENDS.clear()
+
+    return False
 
 
 # ================= SEND MESSAGE =================
 def send_message(chat_id, text, parse_mode=None):
     if not chat_id or not text:
         return {"ok": False}
+
+    if is_rate_limited(chat_id):
+        return {"ok": False, "rate_limited": True}
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
     payload = {'chat_id': chat_id, 'text': text}
@@ -50,11 +91,7 @@ def send_message(chat_id, text, parse_mode=None):
 
 # ================= STORAGE =================
 def forward_file_to_storage(file_id):
-    if not STORAGE_CHAT_ID:
-        log_to_discord("Storage chat missing", "status", "warning")
-        return None
-
-    if not file_id:
+    if not STORAGE_CHAT_ID or not file_id:
         return None
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
@@ -65,28 +102,11 @@ def forward_file_to_storage(file_id):
         data = res.json()
 
         if data.get('ok'):
-            log_to_discord(
-                "📦 File stored",
-                "access",
-                "info",
-                fields={"storage_chat": STORAGE_CHAT_ID}
-            )
+            log_to_discord("📦 File stored", "access", "info")
             return data['result']['message_id']
 
-        log_to_discord(
-            "Storage failed",
-            "access",
-            "warning",
-            fields={"response": str(data)}
-        )
-
     except Exception as e:
-        log_to_discord(
-            "Storage error",
-            "access",
-            "error",
-            fields={"error": str(e)}
-        )
+        log_to_discord("Storage error", "access", "error")
 
     return None
 
@@ -95,6 +115,13 @@ def forward_file_to_storage(file_id):
 def send_file(chat_id, file_id):
     if not chat_id or not file_id:
         return {"ok": False}
+
+    # 🔥 duplicate protection
+    if is_duplicate_send(chat_id, file_id):
+        return {"ok": False, "duplicate": True}
+
+    if is_rate_limited(chat_id):
+        return {"ok": False, "rate_limited": True}
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
 
@@ -114,7 +141,7 @@ def send_file(chat_id, file_id):
                 "Send file failed",
                 "status",
                 "error",
-                fields={"chat_id": chat_id, "response": str(data)}
+                fields={"chat_id": chat_id}
             )
             return data
 
@@ -148,12 +175,7 @@ def send_file(chat_id, file_id):
         return data
 
     except Exception as e:
-        log_to_discord(
-            "Send file crash",
-            "status",
-            "error",
-            fields={"chat_id": chat_id, "error": str(e)}
-        )
+        log_to_discord("Send file crash", "status", "error")
         return {"ok": False}
 
 
@@ -174,13 +196,8 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
                 json={'chat_id': chat_id, 'message_id': msg_id},
                 timeout=10
             )
-        except Exception as e:
-            log_to_discord(
-                "Delete failed",
-                "status",
-                "error",
-                fields={"chat_id": chat_id, "error": str(e)}
-            )
+        except:
+            pass
 
     delete_sent_file_record(chat_id, file_message_id)
 
@@ -237,9 +254,4 @@ def cleanup_pending_files():
             )
 
     except Exception as e:
-        log_to_discord(
-            "Cleanup error",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
+        log_to_discord("Cleanup error", "status", "error")
