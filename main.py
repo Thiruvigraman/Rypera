@@ -14,6 +14,7 @@ from webhook import log_to_discord
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
 from globals import start_time
+from database import is_db_available  # ✅ NEW
 
 app = Flask(__name__)
 
@@ -21,6 +22,9 @@ is_shutting_down = False
 mongo_status_flag = True
 initialized = False
 init_lock = threading.Lock()
+
+# 🔥 RATE LIMIT (basic protection)
+LAST_REQUEST_TIME = 0
 
 
 # ================= AUTO WEBHOOK =================
@@ -78,20 +82,27 @@ def startup_check():
     try:
         from database import db, movies_collection
 
-        try:
-            db.command("ping")
-            mongo_status = "✅ Connected"
-        except Exception as e:
-            mongo_status = f"❌ Failed: {str(e)}"
+        # Mongo
+        if not is_db_available():
+            mongo_status = "❌ Not Available"
+        else:
+            try:
+                db.command("ping")
+                mongo_status = "✅ Connected"
+            except Exception as e:
+                mongo_status = f"❌ Failed: {str(e)}"
 
+        # Movies
         try:
             movie_count = movies_collection.count_documents({})
         except:
             movie_count = "Error"
 
+        # RAM
         process = psutil.Process()
         mem = process.memory_info().rss / 1024 / 1024
 
+        # Webhook
         webhook_url = os.getenv("WEBHOOK_URL")
 
         try:
@@ -101,7 +112,6 @@ def startup_check():
             ).json()
 
             current_url = info.get("result", {}).get("url")
-
             webhook_status = "✅ Active" if current_url == webhook_url else "⚠️ Mismatch"
 
         except Exception as e:
@@ -138,6 +148,9 @@ def monitor_mongo():
 
     while True:
         try:
+            if not is_db_available():
+                raise Exception("DB not available")
+
             db.command("ping")
 
             if not mongo_status_flag:
@@ -178,7 +191,6 @@ def init_system():
     cleanup_pending_files()
 
 
-# 🔥 RUN INIT IMMEDIATELY
 threading.Thread(target=init_system, daemon=True).start()
 
 
@@ -218,12 +230,22 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
+# ================= WEBHOOK =================
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
+    global LAST_REQUEST_TIME
+
     try:
+        # 🔥 SIMPLE RATE LIMIT
+        now = time.time()
+        if now - LAST_REQUEST_TIME < 0.05:
+            return jsonify({"status": "rate_limited"}), 200
+
+        LAST_REQUEST_TIME = now
+
         update = request.get_json(silent=True)
 
-        if not update:
+        if not isinstance(update, dict):
             return jsonify({"status": "ignored"}), 200
 
         process_update(update)
@@ -240,6 +262,7 @@ def handle_webhook():
         return jsonify({"error": str(e)}), 500
 
 
+# ================= SHUTDOWN =================
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
     if request.json.get("admin_id") == str(ADMIN_ID):
@@ -247,6 +270,8 @@ def shutdown():
         is_shutting_down = True
 
         log_to_discord("Bot shutting down", "status", "warning")
+
+        time.sleep(1)  # allow logs to flush
         os._exit(0)
 
     return jsonify({"error": "Unauthorized"}), 403
@@ -263,6 +288,8 @@ def handle_shutdown(signum, frame):
     is_shutting_down = True
 
     log_to_discord("Process terminated", "status", "warning")
+
+    time.sleep(1)
     os._exit(0)
 
 
