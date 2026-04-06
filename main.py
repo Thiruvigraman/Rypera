@@ -164,12 +164,6 @@ def start_background_monitor():
     thread.start()
 
 
-# ================= INIT =================
-set_webhook()
-startup_check()
-start_background_monitor()
-
-
 # ================= ROUTES =================
 @app.route("/", methods=["GET"])
 def home():
@@ -200,7 +194,7 @@ def health():
         return jsonify({"status": "error"}), 500
 
 
-# 🔥 MAIN WEBHOOK
+# ================= WEBHOOK =================
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
@@ -255,8 +249,18 @@ signal.signal(signal.SIGINT, handle_shutdown)
 # ================= START =================
 if __name__ == "__main__":
     try:
+        # 🔥 Startup logs
+        log_to_discord("🟢 Bot is online", "status", "info")
+
+        # 🔥 Init systems
+        set_webhook()
+        startup_check()
+        start_background_monitor()
+
+        # 🔥 Cleanup old files
         cleanup_pending_files()
 
+        # 🔥 Run server
         app.run(
             host="0.0.0.0",
             port=int(os.getenv("PORT", 8080)),
