@@ -19,10 +19,10 @@ def send_message(chat_id, text, parse_mode=None):
         res = requests.post(url, json=payload, timeout=10)
         data = res.json()
 
-        # 🚫 Ignore blocked users (403)
         if not data.get("ok"):
             error = data.get("description", "")
 
+            # ignore blocked users
             if "Forbidden" in error or "blocked" in error:
                 return {"ok": False, "ignored": True}
 
@@ -45,6 +45,7 @@ def send_message(chat_id, text, parse_mode=None):
         return {"ok": False}
 
 
+# ================= STORAGE =================
 def forward_file_to_storage(file_id):
     if not STORAGE_CHAT_ID:
         log_to_discord("STORAGE_CHAT_ID not set", "status", "warning")
@@ -54,48 +55,64 @@ def forward_file_to_storage(file_id):
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
 
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        message_data = response.json()
+        res = requests.post(url, json=payload, timeout=10)
+        data = res.json()
 
-        if message_data.get('ok'):
-            log_to_discord("File stored in storage", "status", "info")
-            return message_data['result']['message_id']
+        if data.get('ok'):
+            log_to_discord(
+                "📦 File stored",
+                "access",
+                "info",
+                fields={"storage_chat": STORAGE_CHAT_ID}
+            )
+            return data['result']['message_id']
+
+        else:
+            log_to_discord(
+                "Storage failed",
+                "access",
+                "warning",
+                fields={"response": str(data)}
+            )
 
     except Exception as e:
         log_to_discord(
-            "Storage upload failed",
-            "status",
+            "Storage upload error",
+            "access",
             "error",
             fields={"error": str(e)}
         )
-        return None
+
+    return None
 
 
+# ================= SEND FILE =================
 def send_file(chat_id, file_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
 
     storage_message_id = forward_file_to_storage(file_id)
 
     if not storage_message_id:
-        log_to_discord("Storage failed, direct send", "status", "warning")
+        log_to_discord(
+            "Storage skipped → direct send",
+            "access",
+            "warning"
+        )
 
     payload = {'chat_id': chat_id, 'document': file_id}
 
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
+        res = requests.post(url, json=payload, timeout=10)
+        data = res.json()
 
-        message_data = response.json()
-
-        if message_data.get('ok'):
-            file_message_id = message_data['result']['message_id']
+        if data.get('ok'):
+            file_message_id = data['result']['message_id']
 
             warning_text = (
-    "⚠️ IMPORTANT\n\n"
-    "⏳ This file will be deleted in 15 minutes.\n\n"
-    "📌 Forward it to another chat to keep it permanently."
-)
+                "⚠️ IMPORTANT\n\n"
+                "⏳ This file will be deleted in 15 minutes.\n\n"
+                "📌 Forward it to another chat to keep it permanently."
+            )
 
             warning_response = send_message(chat_id, warning_text)
             warning_message_id = warning_response.get('result', {}).get('message_id')
@@ -109,19 +126,34 @@ def send_file(chat_id, file_id):
                     args=[chat_id, file_message_id, warning_message_id]
                 ).start()
 
-            # ✅ NO ACCESS LOG HERE (IMPORTANT)
+            # 🔥 CLEAN ACCESS LOG (single source of truth)
+            log_to_discord(
+                "📤 File Delivered",
+                "access",
+                "info",
+                fields={"chat_id": chat_id}
+            )
 
-            return message_data
+            return data
+
+        else:
+            log_to_discord(
+                "Send file failed",
+                "status",
+                "error",
+                fields={"chat_id": chat_id, "response": str(data)}
+            )
 
     except Exception as e:
         log_to_discord(
-            "Send file failed",
+            "Send file crash",
             "status",
             "error",
             fields={"chat_id": chat_id, "error": str(e)}
         )
 
 
+# ================= DELETE =================
 def delete_user_messages(chat_id, file_message_id, warning_message_id):
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage'
 
@@ -131,13 +163,6 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
                 url,
                 json={'chat_id': chat_id, 'message_id': msg_id},
                 timeout=10
-            )
-
-            log_to_discord(
-                "Message deleted",
-                "status",
-                "info",
-                fields={"chat_id": chat_id, "message_id": msg_id}
             )
 
         except Exception as e:
@@ -150,7 +175,15 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
 
     delete_sent_file_record(chat_id, file_message_id)
 
+    log_to_discord(
+        "🧹 Auto cleanup done",
+        "status",
+        "info",
+        fields={"chat_id": chat_id}
+    )
 
+
+# ================= ANNOUNCEMENT =================
 def send_announcement(user_ids, message, parse_mode=None):
     success = 0
     failed = 0
@@ -163,9 +196,8 @@ def send_announcement(user_ids, message, parse_mode=None):
         else:
             failed += 1
 
-        time.sleep(0.1)
+        time.sleep(0.05)
 
-    # ✅ ONLY summary log (clean)
     log_to_discord(
         "📢 Announcement Summary",
         "list",
@@ -180,6 +212,7 @@ def send_announcement(user_ids, message, parse_mode=None):
     return success, failed
 
 
+# ================= CLEANUP =================
 def cleanup_pending_files():
     try:
         pending_files = get_pending_files()
@@ -189,13 +222,6 @@ def cleanup_pending_files():
                 f['chat_id'],
                 f['file_message_id'],
                 f['warning_message_id']
-            )
-
-            log_to_discord(
-                "Cleanup done",
-                "status",
-                "info",
-                fields={"chat_id": f['chat_id']}
             )
 
     except Exception as e:
