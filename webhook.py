@@ -3,6 +3,7 @@
 import requests
 import logging
 import time
+import json
 from datetime import datetime
 from typing import Dict, Optional, List
 from config import (
@@ -14,6 +15,15 @@ from config import (
 BATCH_SIZE = 5
 FLUSH_INTERVAL = 5
 MAX_FIELDS = 25
+
+# 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
+LOG_LEVELS = {
+    "info": 1,
+    "warning": 2,
+    "error": 3,
+}
+
+CURRENT_LOG_LEVEL = 1  # 1=info, 2=warning, 3=error
 
 COLORS = {
     "info": 0x2ECC71,
@@ -38,6 +48,15 @@ webhook_map = {
     "list": DISCORD_WEBHOOK_LIST_LOGS,
     "access": DISCORD_WEBHOOK_FILE_ACCESS,
 }
+
+
+# ================= FALLBACK =================
+def write_fallback_log(entry):
+    try:
+        with open("failed_logs.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except:
+        pass
 
 
 # ================= SAFETY =================
@@ -88,7 +107,6 @@ def send_with_retry(url: str, payload: dict, log_type: str):
             if res.status_code in (200, 204):
                 return True
 
-            # rate limit
             if res.status_code == 429:
                 retry_after = 2
                 try:
@@ -114,6 +132,8 @@ def send_in_chunks(log_type: str, entries: List[dict]):
 
     if not validate_webhook_url(url):
         logging.error(f"{log_type} webhook invalid or missing")
+        for e in entries:
+            write_fallback_log(e)
         return
 
     for i in range(0, len(entries), MAX_FIELDS):
@@ -121,9 +141,17 @@ def send_in_chunks(log_type: str, entries: List[dict]):
 
         try:
             payload = build_embed(log_type, chunk)
-            send_with_retry(url, payload, log_type)
+            success = send_with_retry(url, payload, log_type)
+
+            if not success:
+                for e in chunk:
+                    write_fallback_log(e)
+
         except Exception as e:
             logging.error(f"{log_type} chunk failed: {e}")
+
+            for e in chunk:
+                write_fallback_log(e)
 
 
 # ================= FLUSH =================
@@ -157,6 +185,10 @@ def log_to_discord(
     force_flush: bool = False,
 ):
     try:
+        # 🔥 LOG LEVEL FILTER
+        if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
+            return
+
         if log_type not in log_buffers:
             log_type = "status"
 
@@ -164,9 +196,13 @@ def log_to_discord(
             "message": str(message),
             "severity": severity,
             "fields": fields or {},
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
-        # 🔥 ERROR = instant send (never lose critical logs)
+        # add source context
+        entry["fields"]["source"] = log_type
+
+        # 🔥 ERROR = instant send
         if severity == "error":
             send_in_chunks(log_type, [entry])
             return
@@ -175,20 +211,16 @@ def log_to_discord(
 
         now = time.time()
 
-        # batch trigger
         if len(log_buffers[log_type]) >= BATCH_SIZE:
             flush(log_type)
             return
 
-        # time trigger
         if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
             flush(log_type)
             return
 
-        # manual flush
         if force_flush:
             flush(log_type)
 
     except Exception as e:
-        # 🔥 FINAL FAILSAFE (never crash bot)
         print("LOGGING FAILURE:", str(e))
