@@ -1,17 +1,27 @@
 # file: database.py
 
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, DuplicateKeyError
 from config import MONGODB_URI, ADMIN_ID
 from webhook import log_to_discord
 import time
 import secrets
 import string
 
+
 # ================= TOKEN =================
 def generate_token(length=10):
     chars = string.ascii_letters + string.digits
     return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def generate_unique_token():
+    # 🔥 guarantee uniqueness
+    for _ in range(5):
+        token = generate_token()
+        if not movies_collection.find_one({"token": token}):
+            return token
+    return generate_token()
 
 
 # ================= MONGODB SETUP =================
@@ -80,17 +90,16 @@ def load_movies():
             )
         }
     except Exception as e:
-        log_to_discord("Load movies failed", "status", "error", fields={"error": str(e)})
+        log_to_discord("Load movies failed", "status", "error")
         return {}
 
 
 def save_movie(name, file_id):
-    if not name or not file_id:
+    if not name or not file_id or not MONGO_AVAILABLE:
         return None
 
     try:
-        # prevent duplicate token collision
-        token = generate_token()
+        token = generate_unique_token()
 
         movies_collection.update_one(
             {"name": name},
@@ -106,35 +115,38 @@ def save_movie(name, file_id):
 
         return token
 
+    except DuplicateKeyError:
+        return save_movie(name, file_id)
+
     except Exception as e:
-        log_to_discord(
-            "Save movie failed",
-            "status",
-            "error",
-            fields={"movie": name, "error": str(e)}
-        )
+        log_to_discord("Save movie failed", "status", "error")
         return None
 
 
 def get_movie_by_token(token):
-    if not token:
+    if not token or not MONGO_AVAILABLE:
         return None
 
     try:
         return movies_collection.find_one({"token": token})
-    except Exception as e:
-        log_to_discord("Token lookup failed", "status", "error")
+    except:
         return None
 
 
 def delete_movie(name):
+    if not MONGO_AVAILABLE:
+        return
+
     try:
         movies_collection.delete_one({"name": name})
-    except Exception as e:
-        log_to_discord("Delete movie failed", "status", "error")
+    except:
+        pass
 
 
 def rename_movie(old_name, new_name):
+    if not MONGO_AVAILABLE:
+        return False
+
     try:
         movie = movies_collection.find_one({"name": old_name})
 
@@ -152,24 +164,29 @@ def rename_movie(old_name, new_name):
 
         return True
 
-    except Exception as e:
-        log_to_discord("Rename failed", "status", "error", fields={"error": str(e)})
+    except:
         return False
 
 
 # ================= ACCESS =================
 def increment_movie_access(name):
+    if not MONGO_AVAILABLE:
+        return
+
     try:
         movies_collection.update_one(
             {"name": name},
             {"$inc": {"access_count": 1}},
             upsert=True
         )
-    except Exception as e:
-        log_to_discord("Access increment failed", "status", "error")
+    except:
+        pass
 
 
 def get_top_movies(limit=5):
+    if not MONGO_AVAILABLE:
+        return []
+
     try:
         return list(
             movies_collection
@@ -177,44 +194,53 @@ def get_top_movies(limit=5):
             .sort("access_count", -1)
             .limit(limit)
         )
-    except Exception as e:
-        log_to_discord("Top movies failed", "status", "error")
+    except:
         return []
 
 
 # ================= USERS =================
 def add_user(user_id, display_name):
+    if not MONGO_AVAILABLE:
+        return
+
     try:
         users_collection.update_one(
             {"user_id": user_id},
             {"$set": {"user_id": user_id, "display_name": display_name}},
             upsert=True
         )
-    except Exception as e:
-        log_to_discord("Add user failed", "status", "error")
+    except:
+        pass
 
 
 def get_all_users():
+    if not MONGO_AVAILABLE:
+        return []
+
     try:
         return list(users_collection.find({}, {"user_id": 1, "_id": 0}))
-    except Exception as e:
-        log_to_discord("Get users failed", "status", "error")
+    except:
         return []
 
 
 def get_stats():
+    if not MONGO_AVAILABLE:
+        return {"movie_count": 0, "user_count": 0}
+
     try:
         return {
             "movie_count": movies_collection.count_documents({}),
             "user_count": users_collection.count_documents({})
         }
-    except Exception as e:
-        log_to_discord("Stats failed", "status", "error")
+    except:
         return {"movie_count": 0, "user_count": 0}
 
 
 # ================= FILE CLEAN =================
 def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
+    if not MONGO_AVAILABLE:
+        return
+
     try:
         sent_files_collection.insert_one({
             "chat_id": chat_id,
@@ -222,41 +248,43 @@ def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
             "warning_message_id": warning_message_id,
             "timestamp": timestamp
         })
-    except Exception as e:
-        log_to_discord("Save sent file failed", "status", "error")
+    except:
+        pass
 
 
 def get_pending_files(expiry_minutes=15):
+    if not MONGO_AVAILABLE:
+        return []
+
     try:
         cutoff = time.time() - (expiry_minutes * 60)
         return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
-    except Exception as e:
-        log_to_discord("Get pending failed", "status", "error")
+    except:
         return []
 
 
 def delete_sent_file_record(chat_id, file_message_id):
+    if not MONGO_AVAILABLE:
+        return
+
     try:
         sent_files_collection.delete_one({
             "chat_id": chat_id,
             "file_message_id": file_message_id
         })
-    except Exception as e:
-        log_to_discord("Delete record failed", "status", "error")
+    except:
+        pass
 
 
 # ================= DB SIZE =================
 def get_db_size_mb():
+    if not MONGO_AVAILABLE:
+        return 0
+
     try:
         stats = db.command("dbStats")
         size_bytes = stats.get("dataSize", 0)
         size_mb = size_bytes / 1024 / 1024
         return round(size_mb, 2)
-    except Exception as e:
-        log_to_discord(
-            "DB size fetch failed",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
+    except:
         return 0
