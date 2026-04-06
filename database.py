@@ -217,3 +217,20 @@ def delete_sent_file_record(chat_id, file_message_id):
         })
     except:
         pass
+
+
+# ================= DB SIZE =================
+def get_db_size_mb():
+    try:
+        stats = db.command("dbStats")
+        size_bytes = stats.get("dataSize", 0)
+        size_mb = size_bytes / 1024 / 1024
+        return round(size_mb, 2)
+    except Exception as e:
+        log_to_discord(
+            "DB size fetch failed",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+        return 0
