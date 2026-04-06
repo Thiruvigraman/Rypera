@@ -1,6 +1,6 @@
 # file: handlers.py
 
-from config import ADMIN_ID, BOT_TOKEN
+from config import ADMIN_ID, BOT_TOKEN, BOT_USERNAME
 from database import (
     load_movies, save_movie, delete_movie,
     add_user, get_stats, rename_movie,
@@ -111,8 +111,6 @@ def process_update(update):
                 if time.time() - data_obj["time"] > 30:
                     PENDING_DELETE.pop(user_id, None)
                     safe_send(chat_id, "⌛ Delete request expired (30s)")
-
-                    log_to_discord("Delete expired", "list", "warning")
                     return
 
                 movie_name = data_obj["movie"]
@@ -133,10 +131,7 @@ def process_update(update):
             # ===== DELETE CANCEL =====
             if data == "delete_cancel" and is_admin(user_id):
                 PENDING_DELETE.pop(user_id, None)
-
                 safe_send(chat_id, "❌ Delete cancelled")
-
-                log_to_discord("Delete cancelled", "list", "warning")
                 return
 
         # ================= MESSAGE =================
@@ -156,6 +151,34 @@ def process_update(update):
 
         if not is_admin(user_id):
             add_user(user_id, display_name)
+
+        # ===== GENERATE LINK =====
+        if text.startswith("/generate_link") and is_admin(user_id):
+            parts = text.split(maxsplit=1)
+
+            if len(parts) < 2:
+                safe_send(chat_id, "Usage: /generate_link MovieName")
+                return
+
+            movie_name = parts[1]
+            movies = load_movies()
+
+            if movie_name not in movies:
+                safe_send(chat_id, "❌ Movie not found")
+                return
+
+            encoded_name = movie_name.replace(" ", "_")
+            link = f"https://t.me/{BOT_USERNAME}?start={encoded_name}"
+
+            safe_send(chat_id, f"🔗 Link generated:\n\n{link}")
+
+            log_to_discord(
+                "🔗 Link Generated",
+                "list",
+                "info",
+                fields={"Movie": movie_name, "Link": link}
+            )
+            return
 
         # ===== ANNOUNCE =====
         if text.startswith("/announce") and is_admin(user_id):
@@ -183,11 +206,9 @@ def process_update(update):
                     "reply_markup": keyboard
                 }
             )
-
-            log_to_discord("Announcement preview created", "list", "info")
             return
 
-        # ===== DELETE MOVIE (SAFE) =====
+        # ===== DELETE MOVIE =====
         if text.startswith("/delete_movie") and is_admin(user_id):
             parts = text.split(maxsplit=1)
 
@@ -207,7 +228,6 @@ def process_update(update):
                 "time": time.time()
             }
 
-            # auto expire
             def expire():
                 time.sleep(30)
                 PENDING_DELETE.pop(user_id, None)
@@ -229,8 +249,6 @@ def process_update(update):
                     "reply_markup": keyboard
                 }
             )
-
-            log_to_discord("Delete preview created", "list", "warning")
             return
 
         # ===== UPLOAD =====
@@ -285,18 +303,20 @@ def process_update(update):
             name = text.replace("/start ", "").replace("_", " ")
             movies = load_movies()
 
-            if name in movies:
-                send_file(chat_id, movies[name]["file_id"])
-                increment_movie_access(name)
+            if name not in movies:
+                safe_send(chat_id, "❌ Invalid or expired link")
+                return
 
-                log_to_discord(
-                    "🎬 File Accessed",
-                    "access",
-                    "info",
-                    fields={"User": display_name, "Movie": name}
-                )
-            else:
-                safe_send(chat_id, "File not found")
+            send_file(chat_id, movies[name]["file_id"])
+            increment_movie_access(name)
+
+            log_to_discord(
+                "🎬 File Accessed",
+                "access",
+                "info",
+                fields={"User": display_name, "Movie": name}
+            )
+            return
 
     except Exception as e:
         log_to_discord(
