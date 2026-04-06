@@ -12,14 +12,11 @@ from flask import Flask, request, jsonify
 from bot import cleanup_pending_files
 from webhook import log_to_discord
 from config import BOT_TOKEN, ADMIN_ID
-
-# ✅ IMPORTANT: import at top (NOT inside route)
 from handlers import process_update
-
+from globals import start_time
 
 app = Flask(__name__)
 
-from globals import start_time
 is_shutting_down = False
 mongo_status_flag = True
 
@@ -208,9 +205,6 @@ def health():
 def handle_webhook():
     try:
         update = request.get_json()
-
-        # 🔥 DEBUG (optional, keep for now)
-        log_to_discord("Webhook hit", "status", "info")
 
         if update:
             process_update(update)
