@@ -44,6 +44,13 @@ for attempt in range(max_retries):
 
         if attempt == max_retries - 1:
             log_to_discord("MongoDB connection failed", "status", "error")
+
+            try:
+                from bot import send_message
+                send_message(ADMIN_ID, "❌ MongoDB connection failed")
+            except:
+                pass
+
             raise
 
         time.sleep(5)
@@ -60,9 +67,12 @@ def load_movies():
                 "file_id": doc['file_id'],
                 "token": doc.get("token")
             }
-            for doc in movies_collection.find({}, {"name": 1, "file_id": 1, "token": 1, "_id": 0})
+            for doc in movies_collection.find(
+                {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
+            )
         }
-    except:
+    except Exception as e:
+        log_to_discord("Load movies failed", "status", "error")
         return {}
 
 
@@ -83,7 +93,9 @@ def save_movie(name, file_id):
         )
 
         return token
-    except:
+
+    except Exception as e:
+        log_to_discord("Save movie failed", "status", "error")
         return None
 
 
@@ -95,80 +107,113 @@ def get_movie_by_token(token):
 
 
 def delete_movie(name):
-    movies_collection.delete_one({"name": name})
+    try:
+        movies_collection.delete_one({"name": name})
+    except:
+        pass
 
 
 def rename_movie(old_name, new_name):
-    movie = movies_collection.find_one({"name": old_name})
-    if not movie:
+    try:
+        movie = movies_collection.find_one({"name": old_name})
+
+        if not movie:
+            return False
+
+        movies_collection.delete_one({"name": old_name})
+
+        movies_collection.insert_one({
+            "name": new_name,
+            "file_id": movie["file_id"],
+            "token": movie.get("token"),
+            "access_count": movie.get("access_count", 0)
+        })
+
+        return True
+
+    except:
         return False
-
-    movies_collection.delete_one({"name": old_name})
-
-    movies_collection.insert_one({
-        "name": new_name,
-        "file_id": movie["file_id"],
-        "token": movie.get("token"),
-        "access_count": movie.get("access_count", 0)
-    })
-
-    return True
 
 
 # ================= ACCESS =================
 def increment_movie_access(name):
-    movies_collection.update_one(
-        {"name": name},
-        {"$inc": {"access_count": 1}},
-        upsert=True
-    )
+    try:
+        movies_collection.update_one(
+            {"name": name},
+            {"$inc": {"access_count": 1}},
+            upsert=True
+        )
+    except:
+        pass
 
 
 def get_top_movies(limit=5):
-    return list(
-        movies_collection.find({}, {"name": 1, "access_count": 1, "_id": 0})
-        .sort("access_count", -1)
-        .limit(limit)
-    )
+    try:
+        return list(
+            movies_collection
+            .find({}, {"name": 1, "access_count": 1, "_id": 0})
+            .sort("access_count", -1)
+            .limit(limit)
+        )
+    except:
+        return []
 
 
 # ================= USERS =================
 def add_user(user_id, display_name):
-    users_collection.update_one(
-        {"user_id": user_id},
-        {"$set": {"user_id": user_id, "display_name": display_name}},
-        upsert=True
-    )
+    try:
+        users_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"user_id": user_id, "display_name": display_name}},
+            upsert=True
+        )
+    except:
+        pass
 
 
 def get_all_users():
-    return list(users_collection.find({}, {"user_id": 1, "_id": 0}))
+    try:
+        return list(users_collection.find({}, {"user_id": 1, "_id": 0}))
+    except:
+        return []
 
 
 def get_stats():
-    return {
-        "movie_count": movies_collection.count_documents({}),
-        "user_count": users_collection.count_documents({})
-    }
+    try:
+        return {
+            "movie_count": movies_collection.count_documents({}),
+            "user_count": users_collection.count_documents({})
+        }
+    except:
+        return {"movie_count": 0, "user_count": 0}
 
 
 # ================= FILE CLEAN =================
 def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
-    sent_files_collection.insert_one({
-        "chat_id": chat_id,
-        "file_message_id": file_message_id,
-        "warning_message_id": warning_message_id,
-        "timestamp": timestamp
-    })
+    try:
+        sent_files_collection.insert_one({
+            "chat_id": chat_id,
+            "file_message_id": file_message_id,
+            "warning_message_id": warning_message_id,
+            "timestamp": timestamp
+        })
+    except:
+        pass
 
 
 def get_pending_files(expiry_minutes=15):
-    cutoff = time.time() - (expiry_minutes * 60)
-    return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
+    try:
+        cutoff = time.time() - (expiry_minutes * 60)
+        return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
+    except:
+        return []
 
 
 def delete_sent_file_record(chat_id, file_message_id):
-    sent_files_collection.delete_one({
-        "chat_id": chat_id,
-        "file_message_id": file_message_id
-    })
+    try:
+        sent_files_collection.delete_one({
+            "chat_id": chat_id,
+            "file_message_id": file_message_id
+        })
+    except:
+        pass
