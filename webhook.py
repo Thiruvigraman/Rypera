@@ -40,20 +40,25 @@ webhook_map = {
 }
 
 
+# ================= SAFETY =================
 def validate_webhook_url(url: str) -> bool:
-    return url and url.startswith("https://discord.com/api/webhooks/")
+    return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
 
+# ================= EMBED =================
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
     for entry in entries:
-        value = "\n".join(
-            [f"**{k}**: {v}" for k, v in entry["fields"].items()]
-        )
+        try:
+            value = "\n".join(
+                [f"**{k}**: {v}" for k, v in entry.get("fields", {}).items()]
+            )
+        except Exception:
+            value = "Invalid field data"
 
         fields.append({
-            "name": entry["message"],
+            "name": entry.get("message", "Log"),
             "value": value or "—",
             "inline": False,
         })
@@ -62,8 +67,8 @@ def build_embed(log_type: str, entries: List[dict]):
         "embeds": [
             {
                 "title": f"{log_type.upper()} LOGS",
-                "color": COLORS.get(entries[-1]["severity"], 0x95A5A6),
-                "fields": fields,
+                "color": COLORS.get(entries[-1].get("severity"), 0x95A5A6),
+                "fields": fields[:MAX_FIELDS],
                 "footer": {
                     "text": f"{len(entries)} events • {datetime.utcnow().strftime('%H:%M:%S UTC')}"
                 },
@@ -72,58 +77,78 @@ def build_embed(log_type: str, entries: List[dict]):
     }
 
 
+# ================= SEND =================
 def send_with_retry(url: str, payload: dict, log_type: str):
     delays = [1, 2, 4]
 
     for attempt in range(len(delays)):
         try:
-            res = requests.post(url, json=payload, timeout=10)
+            res = requests.post(url, json=payload, timeout=5)
 
             if res.status_code in (200, 204):
-                return
+                return True
 
+            # rate limit
             if res.status_code == 429:
-                retry_after = res.json().get("retry_after", 2)
+                retry_after = 2
+                try:
+                    retry_after = res.json().get("retry_after", 2)
+                except:
+                    pass
+
                 time.sleep(retry_after)
                 continue
 
         except Exception as e:
-            logging.warning(f"{log_type} error: {e}")
+            logging.warning(f"{log_type} send error: {e}")
 
         time.sleep(delays[attempt])
 
-    logging.error(f"{log_type} send failed")
+    logging.error(f"{log_type} send failed permanently")
+    return False
 
 
+# ================= CHUNKS =================
 def send_in_chunks(log_type: str, entries: List[dict]):
     url = webhook_map.get(log_type)
 
     if not validate_webhook_url(url):
-        logging.error(f"{log_type} webhook invalid")
+        logging.error(f"{log_type} webhook invalid or missing")
         return
 
     for i in range(0, len(entries), MAX_FIELDS):
         chunk = entries[i:i + MAX_FIELDS]
-        payload = build_embed(log_type, chunk)
-        send_with_retry(url, payload, log_type)
+
+        try:
+            payload = build_embed(log_type, chunk)
+            send_with_retry(url, payload, log_type)
+        except Exception as e:
+            logging.error(f"{log_type} chunk failed: {e}")
 
 
+# ================= FLUSH =================
 def flush(log_type: str):
-    buffer = log_buffers[log_type]
-    if not buffer:
-        return
+    try:
+        buffer = log_buffers.get(log_type, [])
 
-    send_in_chunks(log_type, buffer)
+        if not buffer:
+            return
 
-    log_buffers[log_type] = []
-    last_flush_time[log_type] = time.time()
+        send_in_chunks(log_type, buffer)
+
+        log_buffers[log_type] = []
+        last_flush_time[log_type] = time.time()
+
+    except Exception as e:
+        logging.error(f"{log_type} flush error: {e}")
 
 
 def flush_all():
-    for log_type in log_buffers:
+    for log_type in list(log_buffers.keys()):
         flush(log_type)
 
 
+# ================= MAIN LOG =================
 def log_to_discord(
     message: str,
     log_type="status",
@@ -131,31 +156,39 @@ def log_to_discord(
     fields: Optional[Dict[str, str]] = None,
     force_flush: bool = False,
 ):
-    if log_type not in log_buffers:
-        log_type = "status"
+    try:
+        if log_type not in log_buffers:
+            log_type = "status"
 
-    entry = {
-        "message": message,
-        "severity": severity,
-        "fields": fields or {},
-    }
+        entry = {
+            "message": str(message),
+            "severity": severity,
+            "fields": fields or {},
+        }
 
-    # 🚨 ERROR = instant send
-    if severity == "error":
-        send_in_chunks(log_type, [entry])
-        return
+        # 🔥 ERROR = instant send (never lose critical logs)
+        if severity == "error":
+            send_in_chunks(log_type, [entry])
+            return
 
-    log_buffers[log_type].append(entry)
+        log_buffers[log_type].append(entry)
 
-    now = time.time()
+        now = time.time()
 
-    if len(log_buffers[log_type]) >= BATCH_SIZE:
-        flush(log_type)
-        return
+        # batch trigger
+        if len(log_buffers[log_type]) >= BATCH_SIZE:
+            flush(log_type)
+            return
 
-    if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
-        flush(log_type)
-        return
+        # time trigger
+        if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
+            flush(log_type)
+            return
 
-    if force_flush:
-        flush(log_type)
+        # manual flush
+        if force_flush:
+            flush(log_type)
+
+    except Exception as e:
+        # 🔥 FINAL FAILSAFE (never crash bot)
+        print("LOGGING FAILURE:", str(e))
