@@ -20,14 +20,16 @@ TEMP_FILE_IDS = {}
 PENDING_ANNOUNCEMENT = {}
 PENDING_DELETE = {}
 
-# 🔥 NEW
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
 
 
 # ================= HELPERS =================
 def is_admin(user_id):
-    return int(user_id) == ADMIN_ID
+    try:
+        return int(user_id) == int(ADMIN_ID)
+    except:
+        return False
 
 
 def get_user_display_name(user):
@@ -39,7 +41,12 @@ def get_user_display_name(user):
 def safe_send(chat_id, text):
     result = send_message(chat_id, text)
     if not result or not result.get("ok"):
-        log_to_discord("Telegram send failed", "status", "error")
+        log_to_discord(
+            "Telegram send failed",
+            "status",
+            "error",
+            fields={"chat_id": chat_id}
+        )
 
 
 # ================= MEMORY CLEANUP =================
@@ -62,7 +69,7 @@ def process_update(update):
         if not isinstance(update, dict):
             return
 
-        # 🔥 DUPLICATE UPDATE PROTECTION
+        # ===== DUPLICATE PROTECTION =====
         update_id = update.get("update_id")
         if update_id in PROCESSED_UPDATES:
             return
@@ -97,12 +104,10 @@ def process_update(update):
 
                 for u in users:
                     res = send_message(u['user_id'], announcement)
-
                     if res and res.get("ok"):
                         success += 1
                     else:
                         failed += 1
-
                     time.sleep(0.05)
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
@@ -121,6 +126,8 @@ def process_update(update):
             if data == "announce_cancel" and is_admin(user_id):
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
                 safe_send(chat_id, "❌ Announcement cancelled")
+
+                log_to_discord("Announcement cancelled", "list", "warning")
                 return
 
             # ===== DELETE CONFIRM =====
@@ -142,7 +149,7 @@ def process_update(update):
                 safe_send(chat_id, f"🗑 Deleted '{d['movie']}'")
 
                 log_to_discord(
-                    "Movie deleted",
+                    "🗑 Movie deleted",
                     "list",
                     "info",
                     fields={"movie": d["movie"]}
@@ -164,13 +171,10 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
-        # 🔥 RATE LIMIT (per user)
+        # ===== RATE LIMIT =====
         now = time.time()
-        last = USER_RATE_LIMIT.get(user_id, 0)
-
-        if now - last < 1:
+        if now - USER_RATE_LIMIT.get(user_id, 0) < 1:
             return
-
         USER_RATE_LIMIT[user_id] = now
 
         text = msg.get("text", "")
@@ -184,7 +188,38 @@ def process_update(update):
 
         # ===== DB SAFETY =====
         if not is_db_available():
+            log_to_discord("DB unavailable", "status", "error")
             safe_send(chat_id, "⚠️ Database unavailable")
+            return
+
+        # ===== UPLOAD =====
+        if (document or video) and is_admin(user_id):
+            file_id = document["file_id"] if document else video["file_id"]
+            TEMP_FILE_IDS[chat_id] = file_id
+
+            safe_send(chat_id, "Send movie name")
+
+            log_to_discord(
+                "📤 File uploaded",
+                "list",
+                "info",
+                fields={"admin": display_name}
+            )
+            return
+
+        # ===== SAVE =====
+        if is_admin(user_id) and chat_id in TEMP_FILE_IDS and text:
+            token = save_movie(text, TEMP_FILE_IDS[chat_id])
+            TEMP_FILE_IDS.pop(chat_id)
+
+            safe_send(chat_id, f"Movie '{text}' added")
+
+            log_to_discord(
+                "🎬 Movie added",
+                "list",
+                "info",
+                fields={"movie": text, "token": token}
+            )
             return
 
         # ===== GENERATE LINK =====
@@ -202,45 +237,38 @@ def process_update(update):
                 safe_send(chat_id, "Movie not found")
                 return
 
-            token = movies[movie_name].get("token")
-
-            if not token:
-                safe_send(chat_id, "Token missing")
-                return
-
+            token = movies[movie_name]["token"]
             link = f"https://t.me/{BOT_USERNAME}?start={token}"
 
             safe_send(chat_id, f"🔗 {link}")
 
-            log_to_discord("Link generated", "list", "info", fields={"movie": movie_name})
+            log_to_discord(
+                "🔗 Link generated",
+                "list",
+                "info",
+                fields={"movie": movie_name}
+            )
             return
 
-        # ===== ANNOUNCE =====
-        if text.startswith("/announce") and is_admin(user_id):
-            parts = text.split(maxsplit=1)
+        # ===== RENAME =====
+        if text.startswith("/rename_file") and is_admin(user_id):
+            parts = text.split(maxsplit=2)
 
-            if len(parts) < 2:
-                safe_send(chat_id, "Usage: /announce message")
+            if len(parts) < 3:
+                safe_send(chat_id, "Usage: /rename_file old new")
                 return
 
-            announcement = parts[1]
-            PENDING_ANNOUNCEMENT[user_id] = announcement
+            if rename_movie(parts[1], parts[2]):
+                safe_send(chat_id, "Renamed successfully")
 
-            keyboard = {
-                "inline_keyboard": [[
-                    {"text": "✅ Confirm", "callback_data": "announce_confirm"},
-                    {"text": "❌ Cancel", "callback_data": "announce_cancel"}
-                ]]
-            }
-
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": f"📢 Preview:\n\n{announcement}",
-                    "reply_markup": keyboard
-                }
-            )
+                log_to_discord(
+                    "✏️ Movie renamed",
+                    "list",
+                    "info",
+                    fields={"old": parts[1], "new": parts[2]}
+                )
+            else:
+                safe_send(chat_id, "Rename failed")
             return
 
         # ===== DELETE =====
@@ -276,10 +304,38 @@ def process_update(update):
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                 json={
                     "chat_id": chat_id,
-                    "text": f"Delete '{movie}'?",
+                    "text": f"⚠️ Delete '{movie}'?",
                     "reply_markup": keyboard
                 }
             )
+
+            log_to_discord(
+                "Delete requested",
+                "list",
+                "warning",
+                fields={"movie": movie}
+            )
+            return
+
+        # ===== TOP =====
+        if text == "/top_movies" and is_admin(user_id):
+            top = get_top_movies()
+
+            msg = "🔥 Top Movies:\n\n"
+            for i, m in enumerate(top, 1):
+                msg += f"{i}. {m['name']} — {m.get('access_count', 0)} downloads\n"
+
+            safe_send(chat_id, msg)
+
+            log_to_discord("Top movies viewed", "list", "info")
+            return
+
+        # ===== STATS =====
+        if text == "/stats" and is_admin(user_id):
+            s = get_stats()
+            safe_send(chat_id, f"Movies: {s['movie_count']} | Users: {s['user_count']}")
+
+            log_to_discord("Stats viewed", "list", "info")
             return
 
         # ===== HEALTH =====
@@ -296,15 +352,16 @@ def process_update(update):
 
             db_size = get_db_size_mb()
 
-            msg = (
+            safe_send(
+                chat_id,
                 f"🟢 Health\n\n"
-                f"⏱ Uptime: {h}h {m}m {s}s\n"
-                f"🧠 RAM: {mem:.2f} MB\n"
-                f"⚡ CPU: {cpu:.2f}%\n"
-                f"🗄 MongoDB: {db_size} MB / 512 MB"
+                f"⏱ {h}h {m}m {s}s\n"
+                f"🧠 {mem:.2f}MB\n"
+                f"⚡ {cpu:.2f}%\n"
+                f"🗄 {db_size}/512 MB"
             )
 
-            safe_send(chat_id, msg)
+            log_to_discord("Health checked", "list", "info")
             return
 
         # ===== START =====
@@ -316,6 +373,13 @@ def process_update(update):
             if movie:
                 send_file(chat_id, movie["file_id"])
                 increment_movie_access(movie["name"])
+
+                log_to_discord(
+                    "🎬 File accessed",
+                    "access",
+                    "info",
+                    fields={"user": display_name, "movie": movie["name"]}
+                )
                 return
 
             name = query.replace("_", " ")
@@ -328,5 +392,17 @@ def process_update(update):
 
             safe_send(chat_id, "❌ Invalid or expired link")
 
+            log_to_discord(
+                "❌ Invalid link attempt",
+                "access",
+                "warning",
+                fields={"user": display_name, "query": query}
+            )
+
     except Exception as e:
-        log_to_discord("Handler crash", "status", "error", fields={"error": str(e)})
+        log_to_discord(
+            "Handler crash",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
