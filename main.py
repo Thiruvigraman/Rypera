@@ -20,6 +20,7 @@ app = Flask(__name__)
 is_shutting_down = False
 mongo_status_flag = True
 initialized = False
+init_lock = threading.Lock()
 
 
 # ================= AUTO WEBHOOK =================
@@ -157,18 +158,17 @@ def monitor_mongo():
 
 
 def start_background_monitor():
-    thread = threading.Thread(target=monitor_mongo, daemon=True)
-    thread.start()
+    threading.Thread(target=monitor_mongo, daemon=True).start()
 
 
 # ================= 🔥 INSTANT STARTUP =================
 def init_system():
     global initialized
 
-    if initialized:
-        return
-
-    initialized = True
+    with init_lock:
+        if initialized:
+            return
+        initialized = True
 
     log_to_discord("🟢 Bot is online", "status", "info")
 
@@ -178,7 +178,7 @@ def init_system():
     cleanup_pending_files()
 
 
-# 🔥 RUN INIT IMMEDIATELY (IMPORTANT)
+# 🔥 RUN INIT IMMEDIATELY
 threading.Thread(target=init_system, daemon=True).start()
 
 
@@ -195,9 +195,15 @@ def health():
         mem = process.memory_info().rss / 1024 / 1024
         cpu = process.cpu_percent(interval=0.1)
 
+        uptime = time.time() - start_time
+        h = int(uptime // 3600)
+        m = int((uptime % 3600) // 60)
+        s = int(uptime % 60)
+
         return jsonify({
             "status": "healthy",
-            "uptime": time.time() - start_time,
+            "uptime_seconds": uptime,
+            "uptime_readable": f"{h}h {m}m {s}s",
             "memory_mb": mem,
             "cpu_percent": cpu
         })
@@ -215,10 +221,12 @@ def health():
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def handle_webhook():
     try:
-        update = request.get_json()
+        update = request.get_json(silent=True)
 
-        if update:
-            process_update(update)
+        if not update:
+            return jsonify({"status": "ignored"}), 200
+
+        process_update(update)
 
         return jsonify(success=True)
 
