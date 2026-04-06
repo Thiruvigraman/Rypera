@@ -6,7 +6,7 @@ from database import (
     add_user, get_stats, rename_movie,
     get_all_users, increment_movie_access,
     get_top_movies, get_movie_by_token,
-    get_db_size_mb
+    get_db_size_mb, is_db_available
 )
 from bot import send_message, send_file
 from webhook import log_to_discord
@@ -19,6 +19,10 @@ from globals import start_time
 TEMP_FILE_IDS = {}
 PENDING_ANNOUNCEMENT = {}
 PENDING_DELETE = {}
+
+# 🔥 NEW
+PROCESSED_UPDATES = set()
+USER_RATE_LIMIT = {}
 
 
 # ================= HELPERS =================
@@ -35,12 +39,21 @@ def get_user_display_name(user):
 def safe_send(chat_id, text):
     result = send_message(chat_id, text)
     if not result or not result.get("ok"):
-        log_to_discord(
-            "Telegram send failed",
-            "status",
-            "error",
-            fields={"chat_id": chat_id}
-        )
+        log_to_discord("Telegram send failed", "status", "error")
+
+
+# ================= MEMORY CLEANUP =================
+def cleanup_memory():
+    while True:
+        time.sleep(300)
+        TEMP_FILE_IDS.clear()
+        PENDING_ANNOUNCEMENT.clear()
+        PENDING_DELETE.clear()
+        PROCESSED_UPDATES.clear()
+        USER_RATE_LIMIT.clear()
+
+
+threading.Thread(target=cleanup_memory, daemon=True).start()
 
 
 # ================= MAIN =================
@@ -48,6 +61,16 @@ def process_update(update):
     try:
         if not isinstance(update, dict):
             return
+
+        # 🔥 DUPLICATE UPDATE PROTECTION
+        update_id = update.get("update_id")
+        if update_id in PROCESSED_UPDATES:
+            return
+
+        PROCESSED_UPDATES.add(update_id)
+
+        if len(PROCESSED_UPDATES) > 1000:
+            PROCESSED_UPDATES.clear()
 
         # ================= CALLBACK =================
         if "callback_query" in update:
@@ -74,10 +97,12 @@ def process_update(update):
 
                 for u in users:
                     res = send_message(u['user_id'], announcement)
+
                     if res and res.get("ok"):
                         success += 1
                     else:
                         failed += 1
+
                     time.sleep(0.05)
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
@@ -139,6 +164,15 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
+        # 🔥 RATE LIMIT (per user)
+        now = time.time()
+        last = USER_RATE_LIMIT.get(user_id, 0)
+
+        if now - last < 1:
+            return
+
+        USER_RATE_LIMIT[user_id] = now
+
         text = msg.get("text", "")
         document = msg.get("document")
         video = msg.get("video")
@@ -148,7 +182,12 @@ def process_update(update):
         if not is_admin(user_id):
             add_user(user_id, display_name)
 
-        # ===== GENERATE LINK (TOKEN) =====
+        # ===== DB SAFETY =====
+        if not is_db_available():
+            safe_send(chat_id, "⚠️ Database unavailable")
+            return
+
+        # ===== GENERATE LINK =====
         if text.startswith("/generate_link") and is_admin(user_id):
             parts = text.split(maxsplit=1)
 
@@ -173,12 +212,7 @@ def process_update(update):
 
             safe_send(chat_id, f"🔗 {link}")
 
-            log_to_discord(
-                "Link generated",
-                "list",
-                "info",
-                fields={"movie": movie_name}
-            )
+            log_to_discord("Link generated", "list", "info", fields={"movie": movie_name})
             return
 
         # ===== ANNOUNCE =====
@@ -209,7 +243,7 @@ def process_update(update):
             )
             return
 
-        # ===== DELETE MOVIE =====
+        # ===== DELETE =====
         if text.startswith("/delete_movie") and is_admin(user_id):
             parts = text.split(maxsplit=1)
 
@@ -226,11 +260,10 @@ def process_update(update):
 
             PENDING_DELETE[user_id] = {"movie": movie, "time": time.time()}
 
-            def expire():
-                time.sleep(30)
-                PENDING_DELETE.pop(user_id, None)
-
-            threading.Thread(target=expire, daemon=True).start()
+            threading.Thread(
+                target=lambda: (time.sleep(30), PENDING_DELETE.pop(user_id, None)),
+                daemon=True
+            ).start()
 
             keyboard = {
                 "inline_keyboard": [[
@@ -247,37 +280,6 @@ def process_update(update):
                     "reply_markup": keyboard
                 }
             )
-            return
-
-        # ===== RENAME =====
-        if text.startswith("/rename_file") and is_admin(user_id):
-            parts = text.split(maxsplit=2)
-
-            if len(parts) < 3:
-                safe_send(chat_id, "Usage: /rename_file old new")
-                return
-
-            if rename_movie(parts[1], parts[2]):
-                safe_send(chat_id, "Renamed")
-            else:
-                safe_send(chat_id, "Failed")
-            return
-
-        # ===== TOP =====
-        if text == "/top_movies" and is_admin(user_id):
-            top = get_top_movies()
-
-            msg = "🔥 Top Movies:\n\n"
-            for i, m in enumerate(top, 1):
-                msg += f"{i}. {m['name']} — {m.get('access_count', 0)} downloads\n"
-
-            safe_send(chat_id, msg)
-            return
-
-        # ===== STATS =====
-        if text == "/stats" and is_admin(user_id):
-            s = get_stats()
-            safe_send(chat_id, f"Movies: {s['movie_count']} | Users: {s['user_count']}")
             return
 
         # ===== HEALTH =====
@@ -305,25 +307,10 @@ def process_update(update):
             safe_send(chat_id, msg)
             return
 
-        # ===== UPLOAD =====
-        if (document or video) and is_admin(user_id):
-            file_id = document["file_id"] if document else video["file_id"]
-            TEMP_FILE_IDS[chat_id] = file_id
-            safe_send(chat_id, "Send movie name")
-            return
-
-        # ===== SAVE =====
-        if is_admin(user_id) and chat_id in TEMP_FILE_IDS and text:
-            save_movie(text, TEMP_FILE_IDS[chat_id])
-            TEMP_FILE_IDS.pop(chat_id)
-            safe_send(chat_id, f"Movie '{text}' added")
-            return
-
         # ===== START =====
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
 
-            # 🔐 TOKEN FIRST
             movie = get_movie_by_token(query)
 
             if movie:
@@ -331,7 +318,6 @@ def process_update(update):
                 increment_movie_access(movie["name"])
                 return
 
-            # 🔁 FALLBACK OLD LINKS
             name = query.replace("_", " ")
             movies = load_movies()
 
@@ -343,9 +329,4 @@ def process_update(update):
             safe_send(chat_id, "❌ Invalid or expired link")
 
     except Exception as e:
-        log_to_discord(
-            "Handler crash",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
+        log_to_discord("Handler crash", "status", "error", fields={"error": str(e)})
