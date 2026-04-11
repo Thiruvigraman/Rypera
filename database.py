@@ -50,7 +50,7 @@ for attempt in range(max_retries):
         movies_collection.create_index(
     [("token", 1)],
     unique=True,
-    partialFilterExpression={"token": {"$exists": True, "$ne": None}}
+    partialFilterExpression={"token": {"$exists": True}}
 )
 
         log_to_discord("MongoDB connected", "status", "info")
