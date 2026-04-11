@@ -47,7 +47,11 @@ for attempt in range(max_retries):
         sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
         users_collection.create_index([("user_id", 1)], unique=True)
         movies_collection.create_index([("name", 1)], unique=True)
-        movies_collection.create_index([("token", 1)], unique=True)
+        movies_collection.create_index(
+    [("token", 1)],
+    unique=True,
+    partialFilterExpression={"token": {"$exists": True, "$ne": None}}
+)
 
         log_to_discord("MongoDB connected", "status", "info")
         break
