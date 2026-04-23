@@ -91,6 +91,23 @@ def process_update(update):
                 json={"callback_query_id": query["id"]}
             )
 
+# ===== LIST PAGINATION =====
+if data.startswith("list_"):
+    try:
+        page = int(data.split("_")[1])
+
+        from commands.list_movies import send_page
+        send_page(chat_id, page)
+
+    except Exception as e:
+        log_to_discord(
+            "Pagination error",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+    return
             # ===== ANNOUNCE CONFIRM =====
             if data == "announce_confirm" and is_admin(user_id):
                 announcement = PENDING_ANNOUNCEMENT.get(user_id)
