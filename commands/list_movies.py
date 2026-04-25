@@ -18,21 +18,17 @@ def send_page(chat_id, page):
         return
 
     start = (page - 1) * PER_PAGE
-    end = start + PER_PAGE
-
-    chunk = movies[start:end]
+    chunk = movies[start:start + PER_PAGE]
 
     text = f"📋 Movies (Page {page}/{pages})\n\n"
 
-    for i, (name, data) in enumerate(chunk, start + 1):
+    for i, (name, _) in enumerate(chunk, start + 1):
         text += f"{i}. {name}\n"
 
-    # 🔥 buttons
     buttons = []
 
     if page > 1:
         buttons.append({"text": "⬅️", "callback_data": f"list_{page-1}"})
-
     if page < pages:
         buttons.append({"text": "➡️", "callback_data": f"list_{page+1}"})
 
@@ -40,11 +36,7 @@ def send_page(chat_id, page):
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "reply_markup": keyboard
-        }
+        json={"chat_id": chat_id, "text": text, "reply_markup": keyboard}
     )
 
 
@@ -52,7 +44,7 @@ def handle_list_movies(chat_id):
     send_page(chat_id, 1)
 
     log_to_discord(
-        "📋 Movie list opened",
-        "list",
-        "info"
+        message="📋 Movies Viewed",
+        log_type="list",
+        severity="info"
     )
