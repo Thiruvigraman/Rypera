@@ -6,7 +6,7 @@ from webhook import log_to_discord
 from config import BOT_USERNAME
 
 
-def handle_generate_link(chat_id, text):
+def handle_generate_link(chat_id, text, user):
     parts = text.split(maxsplit=1)
 
     if len(parts) < 2:
@@ -27,11 +27,15 @@ def handle_generate_link(chat_id, text):
 
     send_message(chat_id, f"🔗 {link}")
 
+    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
+
     log_to_discord(
         message="🔗 Link Generated",
         log_type="list",
         severity="info",
-        fields={"admin": username,
+        fields={
+            "admin": username,
             "movie": movie_name,
-            "link": link}
+            "link": link
+        }
     )
