@@ -151,10 +151,10 @@ def process_update(update):
                 return
 
         # ================= MESSAGE =================
-        if "message" not in update:
-            return
+if "message" not in update:
+    return
 
-        msg = update["message"]
+msg = update["message"]
 chat_id = msg["chat"]["id"]
 user = msg["from"]
 user_id = user["id"]
@@ -164,22 +164,20 @@ if "document" in msg and is_admin(user_id):
     handle_upload(chat_id, msg, user)
     return
 
+now = time.time()
+if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
+    return
 
-        now = time.time()
-        if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
-            return
+USER_RATE_LIMIT[user_id] = now
 
-        USER_RATE_LIMIT[user_id] = now
+text = msg.get("text", "")
 
-        text = msg.get("text", "")
+if not is_admin(user_id):
+    add_user(user_id, user.get("first_name", "User"))
 
-        if not is_admin(user_id):
-            add_user(user_id, user.get("first_name", "User"))
-
-        if not is_db_available():
-            safe_send(chat_id, "⚠️ Database unavailable")
-            return
-
+if not is_db_available():
+    safe_send(chat_id, "⚠️ Database unavailable")
+    return
 
 
         # ================= COMMANDS =================
