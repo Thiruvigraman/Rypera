@@ -41,6 +41,11 @@ def is_admin(user_id):
     except:
         return False
 
+def get_user_name(user):
+    if user.get("username"):
+        return f"@{user['username']}"
+    return user.get("first_name", "User")
+
 
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
@@ -226,32 +231,51 @@ def process_update(update):
 
         # ================= START =================
         if text.startswith("/start "):
-            query = text.split(" ", 1)[1]
+    query = text.split(" ", 1)[1]
 
-            movie = get_movie_by_token(query)
+    movie = get_movie_by_token(query)
 
-            if movie:
-                send_file(chat_id, movie["file_id"])
-                increment_movie_access(movie["name"])
+    if movie:
+        send_file(chat_id, movie["file_id"])
+        increment_movie_access(movie["name"])
 
-                log_to_discord(
-                    "File accessed",
-                    "access",
-                    "info",
-                    fields={"user_id": user_id, "movie": movie["name"]}
-                )
-                return
+        username = get_user_name(user)
 
-            # fallback old links
-            name = query.replace("_", " ")
-            movies = load_movies()
+        log_to_discord(
+            message="🎬 File accessed",
+            log_type="access",
+            severity="info",
+            fields={
+                "user": username,
+                "user_id": user_id,
+                "movie": movie["name"]
+            }
+        )
+        return
 
-            if name in movies:
-                send_file(chat_id, movies[name]["file_id"])
-                increment_movie_access(name)
-                return
+    # ===== fallback old links =====
+    name = query.replace("_", " ")
+    movies = load_movies()
 
-            safe_send(chat_id, "❌ Invalid or expired link")
+    if name in movies:
+        send_file(chat_id, movies[name]["file_id"])
+        increment_movie_access(name)
+
+        username = get_user_name(user)
+
+        log_to_discord(
+            message="🎬 File accessed (fallback)",
+            log_type="access",
+            severity="info",
+            fields={
+                "user": username,
+                "user_id": user_id,
+                "movie": name
+            }
+        )
+        return
+
+    safe_send(chat_id, "❌ Invalid or expired link")
 
             log_to_discord(
                 "Invalid link attempt",
