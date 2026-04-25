@@ -230,7 +230,7 @@ def process_update(update):
             return
 
         # ================= START =================
-        if text.startswith("/start "):
+if text.startswith("/start "):
     query = text.split(" ", 1)[1]
 
     movie = get_movie_by_token(query)
@@ -253,7 +253,7 @@ def process_update(update):
         )
         return
 
-    # ===== fallback old links =====
+    # fallback
     name = query.replace("_", " ")
     movies = load_movies()
 
@@ -277,12 +277,12 @@ def process_update(update):
 
     safe_send(chat_id, "❌ Invalid or expired link")
 
-            log_to_discord(
-                "Invalid link attempt",
-                "access",
-                "warning",
-                fields={"user_id": user_id, "query": query}
-            )
+    log_to_discord(
+        "Invalid link attempt",
+        "access",
+        "warning",
+        fields={"user_id": user_id, "query": query}
+    )
 
     except Exception as e:
         log_to_discord(
