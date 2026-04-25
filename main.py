@@ -209,17 +209,17 @@ def health():
 
         uptime = time.time() - start_time
         days = int(uptime // 86400)
-hours = int((uptime % 86400) // 3600)
-minutes = int((uptime % 3600) // 60)
-seconds = int(uptime % 60)
+        hours = int((uptime % 86400) // 3600)
+        minutes = int((uptime % 3600) // 60)
+        seconds = int(uptime % 60)
 
-return jsonify({
-    "status": "healthy",
-    "uptime_seconds": uptime,
-    "uptime_readable": f"{days}d {hours}h {minutes}m {seconds}s",
-    "memory_mb": mem,
-    "cpu_percent": cpu
-})
+        return jsonify({
+            "status": "healthy",
+            "uptime_seconds": uptime,
+            "uptime_readable": f"{days}d {hours}h {minutes}m {seconds}s",
+            "memory_mb": mem,
+            "cpu_percent": cpu
+        })
 
     except Exception as e:
         log_to_discord(
