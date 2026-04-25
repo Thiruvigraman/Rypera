@@ -240,7 +240,7 @@ if "document" in msg and is_admin(user_id):
 
             # fallback
             name = query.replace("_", " ")
-            movies = load_movies()
+            movies = load_movies_cached()
 
             if name in movies:
                 send_file(chat_id, movies[name]["file_id"])
