@@ -222,7 +222,7 @@ def send_announcement(user_ids, message, parse_mode=None):
         else:
             failed += 1
 
-        time.sleep(0.05)
+        time.sleep(0.01)
 
     log_to_discord(
         "📢 Announcement Summary",
