@@ -1,5 +1,4 @@
-# file rename_file.py
-
+# file: commands/rename_file.py
 
 from database import rename_movie
 from bot import send_message
@@ -10,21 +9,19 @@ def handle_rename(chat_id, text):
     parts = text.split(maxsplit=2)
 
     if len(parts) < 3:
-        return send_message(chat_id, "Usage: /rename_file old_name new_name")
+        return send_message(chat_id, "Usage: /rename_file old new")
 
     old_name = parts[1]
     new_name = parts[2]
 
-    success = rename_movie(old_name, new_name)
-
-    if success:
+    if rename_movie(old_name, new_name):
         send_message(chat_id, f"✅ Renamed:\n{old_name} → {new_name}")
 
         log_to_discord(
-            "✏️ Movie renamed",
-            "list",
-            "info",
+            message="✏️ Movie Renamed",
+            log_type="list",
+            severity="info",
             fields={"old": old_name, "new": new_name}
         )
     else:
-        send_message(chat_id, "❌ Rename failed (movie not found)")
+        send_message(chat_id, "❌ Rename failed")
