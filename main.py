@@ -248,7 +248,11 @@ def handle_webhook():
         if not isinstance(update, dict):
             return jsonify({"status": "ignored"}), 200
 
-        process_update(update)
+        threading.Thread(
+    target=process_update,
+    args=(update,),
+    daemon=True
+).start()
 
         return jsonify(success=True)
 
