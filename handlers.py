@@ -5,8 +5,7 @@ from database import (
     add_user,
     get_movie_by_token,
     increment_movie_access,
-    load_movies,
-load_movies_cached,
+    load_movies_cached,
     is_db_available,
     get_all_users,
     delete_movie
