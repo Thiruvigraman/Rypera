@@ -27,7 +27,15 @@ LOG_LEVELS = {
 }
 
 
-CURRENT_LOG_LEVEL = int(os.getenv("LOG_LEVEL", 1))
+LOG_LEVEL_MAP = {
+    "DEBUG": 0,
+    "INFO": 1,
+    "WARNING": 2,
+    "ERROR": 3
+}
+
+env_level = os.getenv("LOG_LEVEL", "INFO").upper()
+CURRENT_LOG_LEVEL = LOG_LEVEL_MAP.get(env_level, 1)
 
 COLORS = {
     "info": 0x2ECC71,
