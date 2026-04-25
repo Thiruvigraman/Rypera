@@ -14,10 +14,10 @@ def handle_rename(chat_id, text, user):
     old_name = parts[1]
     new_name = parts[2]
 
-    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
-
     if rename_movie(old_name, new_name):
         send_message(chat_id, f"✅ Renamed:\n{old_name} → {new_name}")
+
+        username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
         log_to_discord(
             message="✏️ Movie Renamed",
