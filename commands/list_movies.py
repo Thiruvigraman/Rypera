@@ -14,6 +14,13 @@ def send_page(chat_id, page):
     total = len(movies)
     pages = (total // PER_PAGE) + (1 if total % PER_PAGE else 0)
 
+    if pages == 0:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": "No movies available"}
+        )
+        return
+
     if page < 1 or page > pages:
         return
 
@@ -36,15 +43,22 @@ def send_page(chat_id, page):
 
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "reply_markup": keyboard}
+        json={
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": keyboard
+        }
     )
 
 
-def handle_list_movies(chat_id):
+def handle_list_movies(chat_id, user):
     send_page(chat_id, 1)
 
+    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
+
     log_to_discord(
-        message="📋 Movies Viewed",
+        message="📋 Movie List Opened",
         log_type="list",
-        severity="info"
+        severity="info",
+        fields={"admin": username}
     )
