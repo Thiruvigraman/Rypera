@@ -116,15 +116,18 @@ def send_with_retry(url: str, payload: dict, log_type: str):
         try:
             res = requests.post(url, json=payload, timeout=5)
 
+            # ✅ DEBUG LOG (WHY needed → see Discord errors)
+            if res.status_code not in (200, 204):
+                logging.error(f"{log_type} webhook failed: {res.status_code} {res.text}")
+
             if res.status_code in (200, 204):
                 return True
 
             if res.status_code == 429:
-                retry_after = 2
                 try:
                     retry_after = res.json().get("retry_after", 2)
                 except:
-                    pass
+                    retry_after = 2
 
                 time.sleep(retry_after)
                 continue
@@ -136,7 +139,6 @@ def send_with_retry(url: str, payload: dict, log_type: str):
 
     logging.error(f"{log_type} send failed permanently")
     return False
-
 
 # ================= CHUNKS =================
 def send_in_chunks(log_type: str, entries: List[dict]):
