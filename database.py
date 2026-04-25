@@ -118,9 +118,7 @@ def save_movie(name, file_id):
 
         return token
 
-    except DuplicateKeyError:
-        return save_movie(name, file_id)
-
+    
     except Exception as e:
         log_to_discord("Save movie failed", "status", "error")
         return None
