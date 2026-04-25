@@ -208,17 +208,18 @@ def health():
         cpu = process.cpu_percent(interval=0.1)
 
         uptime = time.time() - start_time
-        h = int(uptime // 3600)
-        m = int((uptime % 3600) // 60)
-        s = int(uptime % 60)
+        days = int(uptime // 86400)
+hours = int((uptime % 86400) // 3600)
+minutes = int((uptime % 3600) // 60)
+seconds = int(uptime % 60)
 
-        return jsonify({
-            "status": "healthy",
-            "uptime_seconds": uptime,
-            "uptime_readable": f"{h}h {m}m {s}s",
-            "memory_mb": mem,
-            "cpu_percent": cpu
-        })
+return jsonify({
+    "status": "healthy",
+    "uptime_seconds": uptime,
+    "uptime_readable": f"{days}d {hours}h {minutes}m {seconds}s",
+    "memory_mb": mem,
+    "cpu_percent": cpu
+})
 
     except Exception as e:
         log_to_discord(
@@ -236,7 +237,6 @@ def handle_webhook():
     global LAST_REQUEST_TIME
 
     try:
-        # 🔥 SIMPLE RATE LIMIT
         now = time.time()
         if now - LAST_REQUEST_TIME < 0.02:
             return jsonify({"status": "rate_limited"}), 200
@@ -245,19 +245,18 @@ def handle_webhook():
 
         update = request.get_json(silent=True)
 
-if not isinstance(update, dict):
-    return jsonify({"status": "ignored"}), 200
+        if not isinstance(update, dict):
+            return jsonify({"status": "ignored"}), 200
 
-log_to_discord("📩 Update received", "status", "info")
+        log_to_discord("📩 Update received", "status", "info")
 
-threading.Thread(
-    target=process_update,
-    args=(update,),
-    daemon=True
-).start()
+        threading.Thread(
+            target=process_update,
+            args=(update,),
+            daemon=True
+        ).start()
 
-return jsonify(success=True)
-
+        return jsonify(success=True)
 
     except Exception as e:
         log_to_discord(
