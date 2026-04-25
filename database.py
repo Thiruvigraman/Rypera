@@ -310,6 +310,23 @@ def load_movies_cached():
 
     return MOVIE_CACHE
 
+def refresh_movie_cache():
+    global MOVIE_CACHE, LAST_CACHE_TIME
+
+    try:
+        MOVIE_CACHE = {
+            doc['name']: {
+                "file_id": doc['file_id'],
+                "token": doc.get("token")
+            }
+            for doc in movies_collection.find(
+                {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
+            )
+        }
+        LAST_CACHE_TIME = time.time()
+    except:
+        pass
+
 # ================= DB SIZE =================
 def get_db_size_mb():
     if not MONGO_AVAILABLE:
