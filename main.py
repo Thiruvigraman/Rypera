@@ -245,6 +245,8 @@ def handle_webhook():
 
         update = request.get_json(silent=True)
 
+log_to_discord("📩 Update received", "status", "info")
+
         if not isinstance(update, dict):
             return jsonify({"status": "ignored"}), 200
 
