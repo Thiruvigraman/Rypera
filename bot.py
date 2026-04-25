@@ -12,7 +12,7 @@ from webhook import log_to_discord
 
 # ================= RATE LIMIT =================
 USER_LAST_REQUEST = defaultdict(float)
-RATE_LIMIT_SECONDS = 2
+RATE_LIMIT_SECONDS = 0.4
 
 
 def is_rate_limited(chat_id):
