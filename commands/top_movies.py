@@ -5,7 +5,7 @@ from bot import send_message
 from webhook import log_to_discord
 
 
-def handle_top_movies(chat_id):
+def handle_top_movies(chat_id, user):
     top = get_top_movies()
 
     if not top:
@@ -18,8 +18,14 @@ def handle_top_movies(chat_id):
 
     send_message(chat_id, msg)
 
+    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
+
     log_to_discord(
         message="🔥 Top Movies Viewed",
         log_type="list",
-        severity="info"
+        severity="info",
+        fields={
+            "admin": username,
+            "count": len(top)
+        }
     )
