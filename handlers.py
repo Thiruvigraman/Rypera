@@ -21,6 +21,7 @@ from commands.stats import handle_stats
 from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
+from commands.upload_movie import handle_upload
 
 import time
 import requests
@@ -171,6 +172,11 @@ def process_update(update):
         if not is_db_available():
             safe_send(chat_id, "⚠️ Database unavailable")
             return
+
+# ===== FILE UPLOAD =====
+if "document" in msg and is_admin(user_id):
+    handle_upload(chat_id, msg, user)
+    return
 
         # ================= COMMANDS =================
         if text.startswith("/generate_link") and is_admin(user_id):
