@@ -238,7 +238,7 @@ def handle_webhook():
     try:
         # 🔥 SIMPLE RATE LIMIT
         now = time.time()
-        if now - LAST_REQUEST_TIME < 0.05:
+        if now - LAST_REQUEST_TIME < 0.02:
             return jsonify({"status": "rate_limited"}), 200
 
         LAST_REQUEST_TIME = now
