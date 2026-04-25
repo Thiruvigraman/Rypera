@@ -245,18 +245,19 @@ def handle_webhook():
 
         update = request.get_json(silent=True)
 
+if not isinstance(update, dict):
+    return jsonify({"status": "ignored"}), 200
+
 log_to_discord("📩 Update received", "status", "info")
 
-        if not isinstance(update, dict):
-            return jsonify({"status": "ignored"}), 200
-
-        threading.Thread(
+threading.Thread(
     target=process_update,
     args=(update,),
     daemon=True
 ).start()
 
-        return jsonify(success=True)
+return jsonify(success=True)
+
 
     except Exception as e:
         log_to_discord(
