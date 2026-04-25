@@ -1,5 +1,8 @@
 # file: webhook.py
 
+
+
+import os
 import requests
 import logging
 import time
@@ -23,7 +26,8 @@ LOG_LEVELS = {
     "error": 3,
 }
 
-CURRENT_LOG_LEVEL = 1  # 1=info, 2=warning, 3=error
+
+CURRENT_LOG_LEVEL = int(os.getenv("LOG_LEVEL", 1))
 
 COLORS = {
     "info": 0x2ECC71,
