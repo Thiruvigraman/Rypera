@@ -31,5 +31,7 @@ def handle_generate_link(chat_id, text):
         message="🔗 Link Generated",
         log_type="list",
         severity="info",
-        fields={"movie": movie_name}
+        fields={"admin": username,
+            "movie": movie_name,
+            "link": link}
     )
