@@ -16,12 +16,11 @@ def generate_token(length=10):
 
 
 def generate_unique_token():
-    # 🔥 guarantee uniqueness
-    for _ in range(5):
+    while True:
         token = generate_token()
         if not movies_collection.find_one({"token": token}):
             return token
-    return generate_token()
+ 
 
 
 # ================= MONGODB SETUP =================
