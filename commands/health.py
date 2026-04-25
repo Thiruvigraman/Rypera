@@ -1,6 +1,4 @@
-# file health.py
-
-
+# file: commands/health.py
 
 import psutil
 import time
@@ -22,28 +20,22 @@ def handle_health(chat_id):
     days = int(uptime // 86400)
     hours = int((uptime % 86400) // 3600)
     minutes = int((uptime % 3600) // 60)
-    seconds = int(uptime % 60)
 
     db_size = get_db_size_mb()
 
     msg = (
         f"🟢 Health Status\n\n"
-        f"⏱ Uptime: {days}d {hours}h {minutes}m {seconds}s\n"
-        f"🧠 RAM: {mem:.2f} MB\n"
-        f"⚡ CPU: {cpu:.2f}%\n"
-        f"🗄 MongoDB: {db_size} MB / 512 MB"
+        f"⏱ {days}d {hours}h {minutes}m\n"
+        f"🧠 {mem:.2f} MB\n"
+        f"⚡ {cpu:.2f}%\n"
+        f"🗄 {db_size} MB / 512 MB"
     )
 
     send_message(chat_id, msg)
 
     log_to_discord(
-        "Health checked",
-        "status",
-        "info",
-        fields={
-            "uptime": f"{days}d {hours}h",
-            "ram": f"{mem:.2f}MB",
-            "cpu": f"{cpu:.2f}%",
-            "db": f"{db_size}MB"
-        }
+        message="🟢 Health Checked",
+        log_type="status",
+        severity="info",
+        fields={"uptime": f"{days}d {hours}h"}
     )
