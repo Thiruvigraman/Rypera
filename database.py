@@ -143,10 +143,9 @@ def delete_movie(name):
 
     try:
         movies_collection.delete_one({"name": name})
-refresh_movie_cache()
+        refresh_movie_cache()  # ✅ inside try
     except:
         pass
-
 
 def rename_movie(old_name, new_name):
     if not MONGO_AVAILABLE:
@@ -166,7 +165,8 @@ def rename_movie(old_name, new_name):
             "token": movie.get("token"),
             "access_count": movie.get("access_count", 0)
         })
-refresh_movie_cache()
+
+        refresh_movie_cache()  # ✅ inside try
 
         return True
 
