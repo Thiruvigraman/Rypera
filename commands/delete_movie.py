@@ -10,7 +10,7 @@ from config import BOT_TOKEN
 from webhook import log_to_discord
 
 
-def handle_delete_movie(chat_id, text, user_id, pending_delete):
+def handle_delete_movie(chat_id, text, user_id, pending_delete, user):
     parts = text.split(maxsplit=1)
 
     if len(parts) < 2:
@@ -22,7 +22,10 @@ def handle_delete_movie(chat_id, text, user_id, pending_delete):
     if movie not in movies:
         return send_message(chat_id, "Movie not found")
 
-    pending_delete[user_id] = {"movie": movie, "time": time.time()}
+    pending_delete[user_id] = {
+        "movie": movie,
+        "time": time.time()
+    }
 
     def expire():
         time.sleep(30)
@@ -46,9 +49,14 @@ def handle_delete_movie(chat_id, text, user_id, pending_delete):
         }
     )
 
+    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
+
     log_to_discord(
         message="🗑 Delete Requested",
         log_type="list",
         severity="warning",
-        fields={"movie": movie, "admin": user_id}
+        fields={
+            "admin": username,
+            "movie": movie
+        }
     )
