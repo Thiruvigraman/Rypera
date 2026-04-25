@@ -2,28 +2,36 @@
 
 from config import ADMIN_ID, BOT_TOKEN
 from database import (
-    add_user, get_movie_by_token,
-    increment_movie_access, load_movies,
-    is_db_available
+    add_user,
+    get_movie_by_token,
+    increment_movie_access,
+    load_movies,
+    is_db_available,
+    get_all_users,
+    delete_movie
 )
 from bot import send_message, send_file
 from webhook import log_to_discord
 
-# 🔥 IMPORT ALL COMMANDS
+# ✅ COMMAND IMPORTS (FIXED)
 from commands.generate_link import handle_generate_link
-from commands.delete_movie import handle_delete
+from commands.delete_movie import handle_delete_movie
 from commands.rename_file import handle_rename
 from commands.health import handle_health
 from commands.stats import handle_stats
-from commands.top_movies import handle_top
-from commands.announcement import handle_announce
+from commands.top_movies import handle_top_movies
+from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 
 import time
 import requests
 
+# ================= STATE =================
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
+
+PENDING_DELETE = {}
+PENDING_ANNOUNCEMENT = {}
 
 
 # ================= HELPERS =================
@@ -37,7 +45,12 @@ def is_admin(user_id):
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
     if not res or not res.get("ok"):
-        log_to_discord("Send failed", "status", "error")
+        log_to_discord(
+            "Send failed",
+            "status",
+            "error",
+            fields={"chat_id": chat_id}
+        )
 
 
 # ================= MAIN =================
@@ -46,11 +59,15 @@ def process_update(update):
         if not isinstance(update, dict):
             return
 
-        # ===== DUPLICATE =====
+        # ===== DUPLICATE PROTECTION =====
         update_id = update.get("update_id")
         if update_id in PROCESSED_UPDATES:
             return
+
         PROCESSED_UPDATES.add(update_id)
+
+        if len(PROCESSED_UPDATES) > 2000:
+            PROCESSED_UPDATES.clear()
 
         # ================= CALLBACK =================
         if "callback_query" in update:
@@ -59,21 +76,92 @@ def process_update(update):
             user_id = query["from"]["id"]
             chat_id = query["message"]["chat"]["id"]
 
+            # acknowledge button click
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
                 json={"callback_query_id": query["id"]}
             )
 
-            # 🔥 PAGINATION
+            # ===== PAGINATION =====
             if data and data.startswith("list_"):
                 try:
                     page = int(data.split("_")[1])
                     send_page(chat_id, page)
                 except Exception as e:
-                    log_to_discord("Pagination error", "status", "error")
+                    log_to_discord(
+                        "Pagination error",
+                        "status",
+                        "error",
+                        fields={"error": str(e)}
+                    )
                 return
 
-            # delegate announce/delete confirmations if needed later
+            # ===== ANNOUNCE CONFIRM =====
+            if data == "announce_confirm" and is_admin(user_id):
+                announcement = PENDING_ANNOUNCEMENT.get(user_id)
+
+                if not announcement:
+                    safe_send(chat_id, "No pending announcement")
+                    return
+
+                users = get_all_users()
+
+                success, failed = 0, 0
+
+                for u in users:
+                    res = send_message(u['user_id'], announcement)
+
+                    if res and res.get("ok"):
+                        success += 1
+                    else:
+                        failed += 1
+
+                    time.sleep(0.05)
+
+                PENDING_ANNOUNCEMENT.pop(user_id, None)
+
+                safe_send(chat_id, f"✅ Sent\nSuccess: {success}\nFailed: {failed}")
+
+                log_to_discord(
+                    "📢 Announcement sent",
+                    "list",
+                    "info",
+                    fields={"success": success, "failed": failed}
+                )
+                return
+
+            # ===== ANNOUNCE CANCEL =====
+            if data == "announce_cancel" and is_admin(user_id):
+                PENDING_ANNOUNCEMENT.pop(user_id, None)
+                safe_send(chat_id, "❌ Announcement cancelled")
+                return
+
+            # ===== DELETE CONFIRM =====
+            if data == "delete_confirm" and is_admin(user_id):
+                d = PENDING_DELETE.get(user_id)
+
+                if not d:
+                    safe_send(chat_id, "No pending delete")
+                    return
+
+                delete_movie(d["movie"])
+                PENDING_DELETE.pop(user_id, None)
+
+                safe_send(chat_id, f"🗑 Deleted: {d['movie']}")
+
+                log_to_discord(
+                    "Movie deleted",
+                    "list",
+                    "info",
+                    fields={"movie": d["movie"]}
+                )
+                return
+
+            # ===== DELETE CANCEL =====
+            if data == "delete_cancel" and is_admin(user_id):
+                PENDING_DELETE.pop(user_id, None)
+                safe_send(chat_id, "❌ Cancelled")
+                return
 
         # ================= MESSAGE =================
         if "message" not in update:
@@ -86,8 +174,9 @@ def process_update(update):
 
         # ===== RATE LIMIT =====
         now = time.time()
-        if now - USER_RATE_LIMIT.get(user_id, 0) < 0.3:
+        if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
             return
+
         USER_RATE_LIMIT[user_id] = now
 
         text = msg.get("text", "")
@@ -108,7 +197,7 @@ def process_update(update):
             return
 
         if text.startswith("/delete_movie") and is_admin(user_id):
-            handle_delete(chat_id, text, user_id)
+            handle_delete_movie(chat_id, text, user_id, PENDING_DELETE)
             return
 
         if text.startswith("/rename_file") and is_admin(user_id):
@@ -116,7 +205,7 @@ def process_update(update):
             return
 
         if text.startswith("/announce") and is_admin(user_id):
-            handle_announce(chat_id, text, user_id)
+            handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT)
             return
 
         if text == "/stats" and is_admin(user_id):
@@ -124,7 +213,7 @@ def process_update(update):
             return
 
         if text == "/top_movies" and is_admin(user_id):
-            handle_top(chat_id)
+            handle_top_movies(chat_id)
             return
 
         if text == "/health" and is_admin(user_id):
@@ -140,11 +229,20 @@ def process_update(update):
             query = text.split(" ", 1)[1]
 
             movie = get_movie_by_token(query)
+
             if movie:
                 send_file(chat_id, movie["file_id"])
                 increment_movie_access(movie["name"])
+
+                log_to_discord(
+                    "File accessed",
+                    "access",
+                    "info",
+                    fields={"user_id": user_id, "movie": movie["name"]}
+                )
                 return
 
+            # fallback old links
             name = query.replace("_", " ")
             movies = load_movies()
 
@@ -155,5 +253,17 @@ def process_update(update):
 
             safe_send(chat_id, "❌ Invalid or expired link")
 
+            log_to_discord(
+                "Invalid link attempt",
+                "access",
+                "warning",
+                fields={"user_id": user_id, "query": query}
+            )
+
     except Exception as e:
-        log_to_discord("Handler crash", "status", "error")
+        log_to_discord(
+            "Handler crash",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
