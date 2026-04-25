@@ -44,18 +44,30 @@ for attempt in range(max_retries):
         sent_files_collection = db['sent_files']
 
         # indexes
-        sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
-        users_collection.create_index([("user_id", 1)], unique=True)
-        movies_collection.create_index([("name", 1)], unique=True)
-        movies_collection.create_index(
-    [("token", 1)],
-    unique=True,
-    sparse=True
+sent_files_collection.create_index([("chat_id", 1), ("file_message_id", 1)])
+
+users_collection.create_index(
+    [("user_id", 1)],
+    unique=True
 )
 
-        log_to_discord("MongoDB connected", "status", "info")
-        break
+movies_collection.create_index(
+    [("name", 1)],
+    unique=True
+)
 
+# safe token index
+existing_indexes = movies_collection.index_information()
+
+if "token_1" not in existing_indexes:
+    movies_collection.create_index(
+        [("token", 1)],
+        unique=True,
+        name="token_1"
+    )
+
+log_to_discord("MongoDB connected", "status", "info")
+break
     except ConnectionFailure as e:
         MONGO_AVAILABLE = False
 
