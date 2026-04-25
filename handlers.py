@@ -13,7 +13,6 @@ from database import (
 from bot import send_message, send_file
 from webhook import log_to_discord
 
-# ✅ COMMAND IMPORTS (FIXED)
 from commands.generate_link import handle_generate_link
 from commands.delete_movie import handle_delete_movie
 from commands.rename_file import handle_rename
@@ -26,7 +25,6 @@ from commands.list_movies import handle_list_movies, send_page
 import time
 import requests
 
-# ================= STATE =================
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
 
@@ -34,12 +32,9 @@ PENDING_DELETE = {}
 PENDING_ANNOUNCEMENT = {}
 
 
-# ================= HELPERS =================
 def is_admin(user_id):
-    try:
-        return int(user_id) == int(ADMIN_ID)
-    except:
-        return False
+    return str(user_id) == str(ADMIN_ID)
+
 
 def get_user_name(user):
     if user.get("username"):
@@ -50,21 +45,15 @@ def get_user_name(user):
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
     if not res or not res.get("ok"):
-        log_to_discord(
-            "Send failed",
-            "status",
-            "error",
-            fields={"chat_id": chat_id}
-        )
+        log_to_discord("Send failed", "status", "error", fields={"chat_id": chat_id})
 
 
-# ================= MAIN =================
 def process_update(update):
     try:
         if not isinstance(update, dict):
             return
 
-        # ===== DUPLICATE PROTECTION =====
+        # ===== DUPLICATE =====
         update_id = update.get("update_id")
         if update_id in PROCESSED_UPDATES:
             return
@@ -81,24 +70,17 @@ def process_update(update):
             user_id = query["from"]["id"]
             chat_id = query["message"]["chat"]["id"]
 
-            # acknowledge button click
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
                 json={"callback_query_id": query["id"]}
             )
 
-            # ===== PAGINATION =====
             if data and data.startswith("list_"):
                 try:
                     page = int(data.split("_")[1])
                     send_page(chat_id, page)
                 except Exception as e:
-                    log_to_discord(
-                        "Pagination error",
-                        "status",
-                        "error",
-                        fields={"error": str(e)}
-                    )
+                    log_to_discord("Pagination error", "status", "error", fields={"error": str(e)})
                 return
 
             # ===== ANNOUNCE CONFIRM =====
@@ -110,7 +92,6 @@ def process_update(update):
                     return
 
                 users = get_all_users()
-
                 success, failed = 0, 0
 
                 for u in users:
@@ -121,7 +102,7 @@ def process_update(update):
                     else:
                         failed += 1
 
-                    time.sleep(0.05)
+                    time.sleep(0.01)
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
 
@@ -135,7 +116,6 @@ def process_update(update):
                 )
                 return
 
-            # ===== ANNOUNCE CANCEL =====
             if data == "announce_cancel" and is_admin(user_id):
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
                 safe_send(chat_id, "❌ Announcement cancelled")
@@ -162,7 +142,6 @@ def process_update(update):
                 )
                 return
 
-            # ===== DELETE CANCEL =====
             if data == "delete_cancel" and is_admin(user_id):
                 PENDING_DELETE.pop(user_id, None)
                 safe_send(chat_id, "❌ Cancelled")
@@ -177,7 +156,6 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
-        # ===== RATE LIMIT =====
         now = time.time()
         if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
             return
@@ -186,17 +164,14 @@ def process_update(update):
 
         text = msg.get("text", "")
 
-        # ===== SAVE USER =====
         if not is_admin(user_id):
             add_user(user_id, user.get("first_name", "User"))
 
-        # ===== DB CHECK =====
         if not is_db_available():
             safe_send(chat_id, "⚠️ Database unavailable")
             return
 
-        # ================= COMMAND ROUTER =================
-
+        # ================= COMMANDS =================
         if text.startswith("/generate_link") and is_admin(user_id):
             handle_generate_link(chat_id, text, user)
             return
@@ -230,59 +205,59 @@ def process_update(update):
             return
 
         # ================= START =================
-if text.startswith("/start "):
-    query = text.split(" ", 1)[1]
+        if text.startswith("/start "):
+            query = text.split(" ", 1)[1]
 
-    movie = get_movie_by_token(query)
+            movie = get_movie_by_token(query)
 
-    if movie:
-        send_file(chat_id, movie["file_id"])
-        increment_movie_access(movie["name"])
+            if movie:
+                send_file(chat_id, movie["file_id"])
+                increment_movie_access(movie["name"])
 
-        username = get_user_name(user)
+                username = get_user_name(user)
 
-        log_to_discord(
-            message="🎬 File accessed",
-            log_type="access",
-            severity="info",
-            fields={
-                "user": username,
-                "user_id": user_id,
-                "movie": movie["name"]
-            }
-        )
-        return
+                log_to_discord(
+                    "🎬 File accessed",
+                    "access",
+                    "info",
+                    fields={
+                        "user": username,
+                        "user_id": user_id,
+                        "movie": movie["name"]
+                    }
+                )
+                return
 
-    # fallback
-    name = query.replace("_", " ")
-    movies = load_movies()
+            # fallback
+            name = query.replace("_", " ")
+            movies = load_movies()
 
-    if name in movies:
-        send_file(chat_id, movies[name]["file_id"])
-        increment_movie_access(name)
+            if name in movies:
+                send_file(chat_id, movies[name]["file_id"])
+                increment_movie_access(name)
 
-        username = get_user_name(user)
+                username = get_user_name(user)
 
-        log_to_discord(
-            message="🎬 File accessed (fallback)",
-            log_type="access",
-            severity="info",
-            fields={
-                "user": username,
-                "user_id": user_id,
-                "movie": name
-            }
-        )
-        return
+                log_to_discord(
+                    "🎬 File accessed (fallback)",
+                    "access",
+                    "info",
+                    fields={
+                        "user": username,
+                        "user_id": user_id,
+                        "movie": name
+                    }
+                )
+                return
 
-    safe_send(chat_id, "❌ Invalid or expired link")
+            safe_send(chat_id, "❌ Invalid or expired link")
 
-    log_to_discord(
-        "Invalid link attempt",
-        "access",
-        "warning",
-        fields={"user_id": user_id, "query": query}
-    )
+            log_to_discord(
+                "Invalid link attempt",
+                "access",
+                "warning",
+                fields={"user_id": user_id, "query": query}
+            )
 
     except Exception as e:
         log_to_discord(
