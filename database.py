@@ -98,6 +98,7 @@ def load_movies():
         return {}
 
 
+
 def save_movie(name, file_id):
     if not name or not file_id or not MONGO_AVAILABLE:
         return None
@@ -116,11 +117,11 @@ def save_movie(name, file_id):
             },
             upsert=True
         )
-refresh_movie_cache()
+
+        refresh_movie_cache()  # ✅ inside try
 
         return token
 
-    
     except Exception as e:
         log_to_discord("Save movie failed", "status", "error")
         return None
