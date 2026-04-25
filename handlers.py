@@ -198,7 +198,7 @@ def process_update(update):
         # ================= COMMAND ROUTER =================
 
         if text.startswith("/generate_link") and is_admin(user_id):
-            handle_generate_link(chat_id, text)
+            handle_generate_link(chat_id, text, user)
             return
 
         if text.startswith("/delete_movie") and is_admin(user_id):
