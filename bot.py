@@ -116,7 +116,6 @@ def send_file(chat_id, file_id):
     if not chat_id or not file_id:
         return {"ok": False}
 
-    # 🔥 duplicate protection
     if is_duplicate_send(chat_id, file_id):
         return {"ok": False, "duplicate": True}
 
@@ -125,25 +124,26 @@ def send_file(chat_id, file_id):
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
 
+    # async storage
     threading.Thread(
-    target=forward_file_to_storage,
-    args=(file_id,),
-    daemon=True
-).start()
+        target=forward_file_to_storage,
+        args=(file_id,),
+        daemon=True
+    ).start()
 
-storage_message_id = None
+    storage_message_id = None
 
-if not storage_message_id:
-    log_to_discord("Storage skipped", "access", "warning")
+    if not storage_message_id:
+        log_to_discord("Storage skipped", "access", "warning")
 
-payload = {
-    'chat_id': chat_id,
-    'document': file_id
-}
+    payload = {
+        'chat_id': chat_id,
+        'document': file_id
+    }
 
-try:
-    res = requests.post(url, json=payload, timeout=10)
-    data = res.json()
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        data = res.json()
 
         if not data.get('ok'):
             log_to_discord(
