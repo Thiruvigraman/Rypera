@@ -1,5 +1,4 @@
-# file delete_movie.py
-
+# file: commands/delete_movie.py
 
 import time
 import threading
@@ -23,13 +22,8 @@ def handle_delete_movie(chat_id, text, user_id, pending_delete):
     if movie not in movies:
         return send_message(chat_id, "Movie not found")
 
-    # store pending delete with timestamp
-    pending_delete[user_id] = {
-        "movie": movie,
-        "time": time.time()
-    }
+    pending_delete[user_id] = {"movie": movie, "time": time.time()}
 
-    # auto-expire after 30 sec
     def expire():
         time.sleep(30)
         pending_delete.pop(user_id, None)
@@ -53,8 +47,8 @@ def handle_delete_movie(chat_id, text, user_id, pending_delete):
     )
 
     log_to_discord(
-        "Delete requested",
-        "list",
-        "warning",
-        fields={"movie": movie}
+        message="🗑 Delete Requested",
+        log_type="list",
+        severity="warning",
+        fields={"movie": movie, "admin": user_id}
     )
