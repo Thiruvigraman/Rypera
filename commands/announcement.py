@@ -1,9 +1,6 @@
-# file announcement.py
-
-
+# file: commands/announcement.py
 
 import requests
-
 from bot import send_message
 from config import BOT_TOKEN
 from webhook import log_to_discord
@@ -16,8 +13,6 @@ def handle_announcement(chat_id, text, user_id, pending_announcement):
         return send_message(chat_id, "Usage: /announce message")
 
     announcement = parts[1]
-
-    # store pending
     pending_announcement[user_id] = announcement
 
     keyboard = {
@@ -37,7 +32,8 @@ def handle_announcement(chat_id, text, user_id, pending_announcement):
     )
 
     log_to_discord(
-        "Announcement preview created",
-        "list",
-        "info"
+        message="📢 Announcement Preview",
+        log_type="list",
+        severity="info",
+        fields={"admin": user_id}
     )
