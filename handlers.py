@@ -71,9 +71,10 @@ def process_update(update):
             chat_id = query["message"]["chat"]["id"]
 
             requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                json={"callback_query_id": query["id"]}
-            )
+    f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+    json={"callback_query_id": query["id"]},
+    timeout=5
+)
 
             if data and data.startswith("list_"):
                 try:
