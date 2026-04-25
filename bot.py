@@ -133,14 +133,17 @@ def send_file(chat_id, file_id):
 
 storage_message_id = None
 
-    if not storage_message_id:
-        log_to_discord("Storage skipped", "access", "warning")
+if not storage_message_id:
+    log_to_discord("Storage skipped", "access", "warning")
 
-    payload = {'chat_id': chat_id, 'document': file_id}
+payload = {
+    'chat_id': chat_id,
+    'document': file_id
+}
 
-    try:
-        res = requests.post(url, json=payload, timeout=10)
-        data = res.json()
+try:
+    res = requests.post(url, json=payload, timeout=10)
+    data = res.json()
 
         if not data.get('ok'):
             log_to_discord(
