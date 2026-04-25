@@ -159,6 +159,11 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
+# ===== FILE UPLOAD =====
+if "document" in msg and is_admin(user_id):
+    handle_upload(chat_id, msg, user)
+    return
+
         now = time.time()
         if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
             return
@@ -174,10 +179,7 @@ def process_update(update):
             safe_send(chat_id, "⚠️ Database unavailable")
             return
 
-# ===== FILE UPLOAD =====
-if "document" in msg and is_admin(user_id):
-    handle_upload(chat_id, msg, user)
-    return
+
 
         # ================= COMMANDS =================
         if text.startswith("/generate_link") and is_admin(user_id):
