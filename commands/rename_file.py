@@ -21,7 +21,9 @@ def handle_rename(chat_id, text):
             message="✏️ Movie Renamed",
             log_type="list",
             severity="info",
-            fields={"old": old_name, "new": new_name}
+            fields="admin": username,
+        "old": old_name,
+        "new": new_name}
         )
     else:
         send_message(chat_id, "❌ Rename failed")
