@@ -202,31 +202,31 @@ def process_update(update):
             return
 
         if text.startswith("/delete_movie") and is_admin(user_id):
-            handle_delete_movie(chat_id, text, user_id, PENDING_DELETE)
+            handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
             return
 
         if text.startswith("/rename_file") and is_admin(user_id):
-            handle_rename(chat_id, text)
+            handle_rename(chat_id, text, user)
             return
 
         if text.startswith("/announce") and is_admin(user_id):
-            handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT)
+            handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
             return
 
         if text == "/stats" and is_admin(user_id):
-            handle_stats(chat_id)
+            handle_stats(chat_id, user)
             return
 
         if text == "/top_movies" and is_admin(user_id):
-            handle_top_movies(chat_id)
+            handle_top_movies(chat_id, user)
             return
 
         if text == "/health" and is_admin(user_id):
-            handle_health(chat_id)
+            handle_health(chat_id, user)
             return
 
         if text == "/list_movies" and is_admin(user_id):
-            handle_list_movies(chat_id)
+            handle_list_movies(chat_id, user)
             return
 
         # ================= START =================
