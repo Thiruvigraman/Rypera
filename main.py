@@ -245,41 +245,40 @@ def handle_webhook():
 
         update = request.get_json(silent=True)
 
-if not isinstance(update, dict):
-    return jsonify({"status": "ignored"}), 200
+        if not isinstance(update, dict):
+            return jsonify({"status": "ignored"}), 200
 
-# log only important events (not spam)
-if "message" in update:
-    msg = update["message"]
-    user = msg.get("from", {})
-    username = user.get("username") or user.get("first_name")
+        # ✅ safe minimal logging (no spam)
+        if "message" in update:
+            user = update["message"].get("from", {})
+            username = user.get("username") or user.get("first_name")
 
-    log_to_discord(
-        "📩 Message received",
-        "status",
-        "info",
-        fields={"user": username}
-    )
+            log_to_discord(
+                "📩 Message received",
+                "status",
+                "info",
+                fields={"user": username}
+            )
 
+        # ✅ safe thread wrapper
         def safe_process(update):
-    try:
-        process_update(update)
-    except Exception as e:
-        log_to_discord(
-            "Thread crash",
-            "status",
-            "error",
-            fields={"error": str(e)}
-        )
+            try:
+                process_update(update)
+            except Exception as e:
+                log_to_discord(
+                    "Thread crash",
+                    "status",
+                    "error",
+                    fields={"error": str(e)}
+                )
 
-threading.Thread(
-    target=safe_process,
-    args=(update,),
-    daemon=True
-).start()
+        threading.Thread(
+            target=safe_process,
+            args=(update,),
+            daemon=True
+        ).start()
 
-
-        return jsonify(success=True)
+        return jsonify(success=True), 200
 
     except Exception as e:
         log_to_discord(
@@ -289,7 +288,6 @@ threading.Thread(
             fields={"error": str(e)}
         )
         return jsonify({"error": str(e)}), 500
-
 
 # ================= SHUTDOWN =================
 @app.route("/shutdown", methods=["POST"])
