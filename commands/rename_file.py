@@ -5,7 +5,7 @@ from bot import send_message
 from webhook import log_to_discord
 
 
-def handle_rename(chat_id, text):
+def handle_rename(chat_id, text, user):
     parts = text.split(maxsplit=2)
 
     if len(parts) < 3:
@@ -14,6 +14,8 @@ def handle_rename(chat_id, text):
     old_name = parts[1]
     new_name = parts[2]
 
+    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
+
     if rename_movie(old_name, new_name):
         send_message(chat_id, f"✅ Renamed:\n{old_name} → {new_name}")
 
@@ -21,9 +23,11 @@ def handle_rename(chat_id, text):
             message="✏️ Movie Renamed",
             log_type="list",
             severity="info",
-            fields="admin": username,
-        "old": old_name,
-        "new": new_name}
+            fields={
+                "admin": username,
+                "old": old_name,
+                "new": new_name
+            }
         )
     else:
         send_message(chat_id, "❌ Rename failed")
