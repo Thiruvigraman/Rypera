@@ -1,5 +1,4 @@
-# file top_movies.py
-
+# file: commands/top_movies.py
 
 from database import get_top_movies
 from bot import send_message
@@ -19,4 +18,8 @@ def handle_top_movies(chat_id):
 
     send_message(chat_id, msg)
 
-    log_to_discord("Top movies viewed", "list", "info")
+    log_to_discord(
+        message="🔥 Top Movies Viewed",
+        log_type="list",
+        severity="info"
+    )
