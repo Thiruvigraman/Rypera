@@ -245,15 +245,39 @@ def handle_webhook():
 
         update = request.get_json(silent=True)
 
-        if not isinstance(update, dict):
-            return jsonify({"status": "ignored"}), 200
+if not isinstance(update, dict):
+    return jsonify({"status": "ignored"}), 200
 
+# log only important events (not spam)
+if "message" in update:
+    msg = update["message"]
+    user = msg.get("from", {})
+    username = user.get("username") or user.get("first_name")
 
-        threading.Thread(
-            target=process_update,
-            args=(update,),
-            daemon=True
-        ).start()
+    log_to_discord(
+        "📩 Message received",
+        "status",
+        "info",
+        fields={"user": username}
+    )
+
+        def safe_process(update):
+    try:
+        process_update(update)
+    except Exception as e:
+        log_to_discord(
+            "Thread crash",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+threading.Thread(
+    target=safe_process,
+    args=(update,),
+    daemon=True
+).start()
+
 
         return jsonify(success=True)
 
