@@ -1,4 +1,4 @@
-# file generate_link.py
+# file: commands/generate_link.py
 
 from database import load_movies
 from bot import send_message
@@ -28,8 +28,8 @@ def handle_generate_link(chat_id, text):
     send_message(chat_id, f"🔗 {link}")
 
     log_to_discord(
-        "🔗 Link generated",
-        "list",
-        "info",
+        message="🔗 Link Generated",
+        log_type="list",
+        severity="info",
         fields={"movie": movie_name}
     )
