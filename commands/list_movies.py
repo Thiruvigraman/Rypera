@@ -4,6 +4,8 @@ from database import load_movies
 from webhook import log_to_discord
 import requests
 from config import BOT_TOKEN
+from utils import get_username
+username = get_username(user)
 
 PER_PAGE = 10
 
@@ -54,7 +56,6 @@ def send_page(chat_id, page):
 def handle_list_movies(chat_id, user):
     send_page(chat_id, 1)
 
-    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
     log_to_discord(
         message="📋 Movie List Opened",
