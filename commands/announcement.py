@@ -5,8 +5,9 @@ from bot import send_message
 from config import BOT_TOKEN
 from webhook import log_to_discord
 from utils import get_username
-username = get_username(user)
 
+def handle_announcement(chat_id, text, user_id, pending_announcement, user):
+    username = get_username(user)
 
 def handle_announcement(chat_id, text, user_id, pending_announcement, user):
     parts = text.split(maxsplit=1)
