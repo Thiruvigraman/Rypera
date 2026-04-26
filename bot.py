@@ -202,7 +202,7 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
                 json={'chat_id': chat_id, 'message_id': msg_id},
                 timeout=10
             )
-        except:
+        except Exception:
             pass
 
     delete_sent_file_record(chat_id, file_message_id)
