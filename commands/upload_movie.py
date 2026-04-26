@@ -4,10 +4,8 @@ from database import save_movie
 from bot import send_message
 from webhook import log_to_discord
 from config import BOT_USERNAME
-
-
-def get_username(user):
-    return f"@{user.get('username')}" if user.get("username") else user.get("first_name", "Admin")
+from utils import get_username
+username = get_username(user)
 
 
 def handle_upload(chat_id, message, user):
