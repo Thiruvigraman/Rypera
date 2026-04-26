@@ -234,12 +234,11 @@ def log_to_discord(
 
         entry["fields"]["source"] = log_type
 
-        if log_queue.qsize() > 10000:
+if log_queue.qsize() > 10000:
     try:
         log_queue.get_nowait()
     except Exception:
         pass
-
 log_queue.put({**entry, "log_type": log_type})
 
         return True
