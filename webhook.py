@@ -103,17 +103,33 @@ def send_logs(log_type: str, entries: List[dict]):
     if not validate_webhook_url(url):
         return False
 
-    # 🔥 ACCESS → plain messages (NO EMBED)
+    # 🔥 ACCESS → plain messages
     if log_type == "access":
         for entry in entries:
             msg = build_access_text(entry)
             send_payload(url, {"content": msg})
         return True
 
-    # 🔥 ERROR → redirect
-    if any(e["severity"] == "error" for e in entries):
-        url = webhook_map.get("error") or url
+    # 🔥 ERROR → try error webhook first
+    is_error = any(e["severity"] == "error" for e in entries)
 
+    if is_error:
+        error_url = webhook_map.get("error")
+
+        if validate_webhook_url(error_url):
+            success = send_payload(error_url, build_embed(log_type, entries))
+
+            # ✅ fallback → status webhook
+            if not success:
+                print("⚠️ ERROR webhook failed → fallback to STATUS")
+                return send_payload(
+                    webhook_map["status"],
+                    build_embed(log_type, entries)
+                )
+
+            return True
+
+    # normal flow
     payload = build_embed(log_type, entries)
     return send_payload(url, payload)
 
