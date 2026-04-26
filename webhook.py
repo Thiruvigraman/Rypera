@@ -212,8 +212,24 @@ def flush_all():
     for log_type in list(log_buffers.keys()):
         flush(log_type)
 
+# ========== LOG WORKER==========
+def log_worker():
+    while True:
+        try:
+            entry = log_queue.get()
+
+            send_in_chunks(entry["log_type"], [entry])
+
+        except Exception as e:
+            print("Worker error:", e)
+
+        time.sleep(0.2)
+
+threading.Thread(target=log_worker, daemon=True).start()
+
 
 # ================= MAIN LOG =================
+
 def log_to_discord(
     message: str,
     log_type="status",
@@ -238,9 +254,10 @@ def log_to_discord(
         entry["fields"]["source"] = log_type
 
         if severity == "error":
-            return send_in_chunks(log_type, [entry])
+    log_queue.put({**entry, "log_type": log_type})
+       return True
 
-        log_buffers[log_type].append(entry)
+        log_queue.put({**entry, "log_type": log_type})
 
         now = time.time()
 
