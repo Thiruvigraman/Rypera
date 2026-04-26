@@ -29,6 +29,8 @@ init_lock = threading.Lock()
 LAST_REQUEST_TIME = 0
 log_stop_event = threading.Event()
 
+log_to_discord("TEST LOG 🚀", force_flush=True)
+
 # ================= AUTO WEBHOOK =================
 def set_webhook():
     try:
