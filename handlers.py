@@ -239,16 +239,7 @@ def process_update(update):
 
                 username = get_user_name(user)
 
-                log_to_discord(
-                    "🎬 File accessed (fallback)",
-                    "access",
-                    "info",
-                    fields={
-                        "user": username,
-                        "user_id": user_id,
-                        "movie": name
-                    }
-                )
+                save_access_log(user_id, name)
                 return
 
             safe_send(chat_id, "❌ Invalid or expired link")
