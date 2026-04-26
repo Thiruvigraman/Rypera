@@ -9,7 +9,7 @@ import psutil
 import threading
 from flask import Flask, request, jsonify
 from utils import cleanup_pending_files
-from webhook import log_to_discord
+from webhook import log_to_discord,log_worker
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
 from globals import start_time,log_queue
@@ -189,9 +189,7 @@ def init_system():
 
     log_to_discord("🟢 Bot is online", "status", "info")
     
-    from database import refresh_movie_cache, setup_log_ttl
-
-    refresh_movie_cache()
+    from database import setup_log_ttl
 
     set_webhook()
     startup_check()
@@ -205,6 +203,12 @@ def init_system():
 
 
 threading.Thread(target=init_system, daemon=True).start()
+
+threading.Thread(
+    target=log_worker,
+    args=(log_stop_event,),
+    daemon=True
+).start()
 
 
 # ================= ROUTES =================
