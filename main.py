@@ -200,9 +200,6 @@ def init_system():
     setup_log_ttl()
     
 
-log_to_discord("TEST LOG 🚀", force_flush=True)
-
-
 
 threading.Thread(target=init_system, daemon=True).start()
 
@@ -212,6 +209,18 @@ threading.Thread(
     daemon=True
 ).start()
 
+def start_cleanup_loop():
+    while True:
+        try:
+            print("🧹 CLEANUP LOOP RUNNING")
+            cleanup_pending_files()
+        except Exception as e:
+            print("Cleanup error:", e)
+
+        time.sleep(15)  
+
+
+threading.Thread(target=start_cleanup_loop, daemon=True).start()
 
 # ================= ROUTES =================
 @app.route("/", methods=["GET"])
