@@ -113,6 +113,8 @@ def forward_file_to_storage(file_id):
 
 
 # ================= SEND FILE =================
+
+
 def send_file(chat_id, file_id):
     if not chat_id or not file_id:
         return {"ok": False}
@@ -125,13 +127,11 @@ def send_file(chat_id, file_id):
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
 
-    # async storage
     threading.Thread(
         target=forward_file_to_storage,
         args=(file_id,),
         daemon=True
     ).start()
-
 
     payload = {
         'chat_id': chat_id,
@@ -151,39 +151,38 @@ def send_file(chat_id, file_id):
             )
             return data
 
-       
-
-file_message_id = data['result']['message_id']
-
-warning_text = (
-    "⚠️ IMPORTANT\n\n"
-    "⏳ This file will be deleted in 15 minutes.\n\n"
-    "📌 Forward it to another chat to keep it permanently."
-)
-
-# retry send warning
-warning_message_id = None
-
-for _ in range(3):
-    warning_response = send_message(chat_id, warning_text)
-
-    if warning_response and warning_response.get("ok"):
-        warning_message_id = warning_response['result']['message_id']
-        break
-
-    time.sleep(0.5)
-
-
-save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
-            
-
         
+        file_message_id = data['result']['message_id']
+
+        warning_text = (
+            "⚠️ IMPORTANT\n\n"
+            "⏳ This file will be deleted in 15 minutes.\n\n"
+            "📌 Forward it to another chat to keep it permanently."
+        )
+
+        # retry send warning
+        warning_message_id = None
+
+        for _ in range(3):
+            warning_response = send_message(chat_id, warning_text)
+
+            if warning_response and warning_response.get("ok"):
+                warning_message_id = warning_response['result']['message_id']
+                break
+
+            time.sleep(0.5)
+
+        # ✅ ALWAYS SAVE
+        save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
 
         return data
 
     except Exception as e:
         log_to_discord("Send file crash", "status", "error")
-        return {"ok": False}
+        return {"ok": False}            
+
+        
+
 
 
 # ================= DELETE =================
