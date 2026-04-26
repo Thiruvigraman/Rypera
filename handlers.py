@@ -160,17 +160,17 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
-        # ===== FILE UPLOAD =====
+        
+# ===== FILE UPLOAD =====
         if "document" in msg and is_admin(user_id):
             handle_upload(chat_id, msg, user)
             return
 
         # ===== RATE LIMIT =====
-if is_rate_limited(user_id):
-    return
+        if is_rate_limited(user_id):
+            return
 
         text = msg.get("text", "")
-
         if not is_admin(user_id):
             add_user(user_id, user.get("first_name", "User"))
 
