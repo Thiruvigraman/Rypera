@@ -177,6 +177,7 @@ def send_file(chat_id, file_id):
 
 
 # ================= DELETE =================
+
 def delete_user_messages(chat_id, file_message_id, warning_message_id):
     if not isinstance(chat_id, int):
         return
@@ -188,22 +189,21 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
             continue
 
         try:
-            session.post(
+            res = session.post(
                 url,
                 json={'chat_id': chat_id, 'message_id': msg_id},
                 timeout=10
-            )
-        except Exception:
-            pass
+            ).json()
+
+            if not res.get("ok"):
+                print("DELETE FAILED:", res)
+
+        except Exception as e:
+            print("DELETE ERROR:", e)
 
     delete_sent_file_record(chat_id, file_message_id)
 
-    log_to_discord(
-        "🧹 Cleanup complete",
-        "status",
-        "info",
-        fields={"chat_id": chat_id}
-    )
+    
 
 
 # ================= ANNOUNCEMENT =================
