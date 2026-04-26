@@ -115,6 +115,7 @@ def load_movies():
 
 
 
+# save_movie
 def save_movie(name, file_id):
     if not name or not file_id or not MONGO_AVAILABLE:
         return None
@@ -135,9 +136,8 @@ def save_movie(name, file_id):
         )
 
         if REDIS_AVAILABLE:
-            cache = get_cache("movies:all") or {}
-            cache[name] = {"file_id": file_id, "token": token}
-            set_cache("movies:all", cache, ttl=60)
+            set_cache(f"movie:{name}", {"file_id": file_id, "token": token}, ttl=3600)
+            set_cache(f"token:{token}", name, ttl=3600)
 
         return token
 
@@ -146,31 +146,55 @@ def save_movie(name, file_id):
         return None
 
 
+# get_movie_by_token (🔥 HUGE SPEED BOOST)
 def get_movie_by_token(token):
-    if not token or not MONGO_AVAILABLE:
+    if not token:
+        return None
+
+    if REDIS_AVAILABLE:
+        name = get_cache(f"token:{token}")
+        if name:
+            movie = get_cache(f"movie:{name}")
+            if movie:
+                return {"name": name, **movie}
+
+    if not MONGO_AVAILABLE:
         return None
 
     try:
-        return movies_collection.find_one({"token": token})
+        movie = movies_collection.find_one({"token": token})
+
+        if movie and REDIS_AVAILABLE:
+            name = movie["name"]
+            set_cache(f"movie:{name}", {
+                "file_id": movie["file_id"],
+                "token": movie["token"]
+            }, ttl=3600)
+            set_cache(f"token:{token}", name, ttl=3600)
+
+        return movie
+
     except Exception:
         return None
 
 
+# delete_movie
 def delete_movie(name):
     if not MONGO_AVAILABLE:
         return
 
     try:
+        movie = movies_collection.find_one({"name": name})
         movies_collection.delete_one({"name": name})
 
-        if REDIS_AVAILABLE:
-            cache = get_cache("movies:all") or {}
-            cache.pop(name, None)
-            set_cache("movies:all", cache, ttl=60)
+        if REDIS_AVAILABLE and movie:
+            delete_cache(f"movie:{name}")
+            delete_cache(f"token:{movie.get('token')}")
 
     except Exception:
         pass
 
+# rename_movie
 def rename_movie(old_name, new_name):
     if not MONGO_AVAILABLE:
         return False
@@ -191,11 +215,11 @@ def rename_movie(old_name, new_name):
         })
 
         if REDIS_AVAILABLE:
-            cache = get_cache("movies:all") or {}
-            data = cache.pop(old_name, None)
-            if data:
-                cache[new_name] = data
-                set_cache("movies:all", cache, ttl=60)
+            delete_cache(f"movie:{old_name}")
+            set_cache(f"movie:{new_name}", {
+                "file_id": movie["file_id"],
+                "token": movie.get("token")
+            }, ttl=3600)
 
         return True
 
