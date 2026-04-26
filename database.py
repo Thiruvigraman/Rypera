@@ -391,13 +391,20 @@ def mark_log_sent(log_id):
 
 def setup_log_ttl():
     try:
+        # Access logs → 7 days
         db['access_logs'].create_index(
             "timestamp",
-            expireAfterSeconds=7 * 24 * 60 * 60  # 7 days
+            expireAfterSeconds=7 * 24 * 60 * 60
         )
+
+        # 🔥 Sent files → 15 minutes
+        db['sent_files'].create_index(
+            "timestamp",
+            expireAfterSeconds=15 * 60
+        )
+
     except Exception:
         pass
-
 # ================= DB SIZE =================
 def get_db_size_mb():
     if not MONGO_AVAILABLE:
