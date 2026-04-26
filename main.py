@@ -8,12 +8,11 @@ import requests
 import psutil
 import threading
 from flask import Flask, request, jsonify
-
 from utils import cleanup_pending_files
-from webhook import log_to_discord
+from webhook import log_to_discord,log_worker
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
-from globals import start_time
+from globals import start_time,log_queue
 from database import is_db_available
 from database import setup_log_ttl
 from concurrent.futures import ThreadPoolExecutor
@@ -27,9 +26,8 @@ mongo_status_flag = True
 initialized = False
 init_lock = threading.Lock()
 
-# 🔥 RATE LIMIT (basic protection)
 LAST_REQUEST_TIME = 0
-
+log_stop_event = threading.Event()
 
 # ================= AUTO WEBHOOK =================
 def set_webhook():
@@ -178,7 +176,12 @@ def start_background_monitor():
     threading.Thread(target=monitor_mongo, daemon=True).start()
 
 
-
+def start_log_worker():
+    threading.Thread(
+        target=log_worker,
+        args=(log_stop_event,),
+        daemon=True
+    ).start()
 
 
 # ================= 🔥 INSTANT STARTUP =================
@@ -191,7 +194,7 @@ def init_system():
         initialized = True
 
     log_to_discord("🟢 Bot is online", "status", "info")
-
+    start_log_worker()
     from database import refresh_movie_cache, setup_log_ttl
 
     refresh_movie_cache()
@@ -327,6 +330,11 @@ def handle_shutdown(signum, frame):
     is_shutting_down = True
 
     log_to_discord("Process terminated", "status", "warning")
+
+    log_stop_event.set()
+    log_queue.join()  # wait for logs to finish
+
+    EXECUTOR.shutdown(wait=False)
 
     time.sleep(1)
     os._exit(0)
