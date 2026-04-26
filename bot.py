@@ -165,11 +165,7 @@ def send_file(chat_id, file_id):
         if warning_message_id:
             save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
 
-            threading.Timer(
-                900,
-                delete_user_messages,
-                args=[chat_id, file_message_id, warning_message_id]
-            ).start()
+            
 
         
 
