@@ -311,7 +311,7 @@ def handle_webhook():
 # ================= SHUTDOWN =================
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
-    if int(request.json.get("admin_id,0")) in ADMIN_IDS:
+    if int(request.json.get("admin_id",0)) in ADMIN_IDS:
         global is_shutting_down
         is_shutting_down = True
 
