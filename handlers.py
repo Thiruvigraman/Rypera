@@ -67,9 +67,6 @@ def process_update(update):
 
         update_id = update.get("update_id")
 
-        if is_admin(user_id):
-    ADMIN_ALERT_CHAT_ID = chat_id
-
         # thread-safe dedupe
         with UPDATE_LOCK:
             if update_id in PROCESSED_UPDATES:
@@ -170,6 +167,10 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
+import webhook
+if is_admin(user_id):
+    webhook.ADMIN_ALERT_CHAT_ID = chat_id
+
         if "document" in msg and is_admin(user_id):
             handle_upload(chat_id, msg, user)
             return
@@ -224,58 +225,58 @@ def process_update(update):
             return
 
  # ================= LOG COMMANDS =================
-if text == "/pause_logs" and is_admin(user_id):
-    set_logging(False)
-    send_message(chat_id, "🛑 Logging paused")
-    return
+        if text == "/pause_logs" and is_admin(user_id):
+            set_logging(False)
+            send_message(chat_id, "🛑 Logging paused")
+            return
 
-if text == "/resume_logs" and is_admin(user_id):
-    set_logging(True)
-    send_message(chat_id, "✅ Logging resumed")
-    return
+        if text == "/resume_logs" and is_admin(user_id):
+            set_logging(True)
+            send_message(chat_id, "✅ Logging resumed")
+            return
 
-if text.startswith("/freeze_logs") and is_admin(user_id):
-    parts = text.split()
+        if text.startswith("/freeze_logs") and is_admin(user_id):
+            parts = text.split()
+            duration = 3600
 
-    duration = 3600  # default 1h
-    if len(parts) > 1:
-        try:
-            duration = int(parts[1]) * 60  # minutes → seconds
-        except:
-            pass
+            if len(parts) > 1:
+                try:
+                    duration = int(parts[1]) * 60
+                except:
+                    pass
 
-    set_freeze(True, duration)
-    send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
-    return
+            set_freeze(True, duration)
+            send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
+            return
 
-if text == "/unfreeze_logs" and is_admin(user_id):
-    set_freeze(False)
-    send_message(chat_id, "🔥 Logs resumed")
-    return
+        if text == "/unfreeze_logs" and is_admin(user_id):
+            set_freeze(False)
+            send_message(chat_id, "🔥 Logs resumed")
+            return
 
-if text == "/log_status" and is_admin(user_id):
-    status = "ON" if is_logging_enabled() else "OFF"
-    freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
-    queue_size = get_log_queue_size()
+        if text == "/log_status" and is_admin(user_id):
+            status = "ON" if is_logging_enabled() else "OFF"
+            freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
+            queue_size = get_log_queue_size()
 
-    send_message(
-        chat_id,
-        f"📊 Logging: {status}\n"
-        f"🧊 Mode: {freeze}\n"
-        f"📦 Queue: {queue_size}"
-    )
-    return
+            send_message(
+                chat_id,
+                f"📊 Logging: {status}\n"
+                f"🧊 Mode: {freeze}\n"
+                f"📦 Queue: {queue_size}"
+            )
+            return
 
-if text == "/clear_logs" and is_admin(user_id):
-    cleared_queue, failed_count = clear_all_logs()
+        if text == "/clear_logs" and is_admin(user_id):
+            cleared_queue, failed_count = clear_all_logs()
 
-    send_message(
-        chat_id,
-        f"🧹 Logs cleared\n"
-        f"📦 Queue Cleared: {cleared_queue}\n"
-        f"⚠️ Failed Cleared: {failed_count}"
-    )
-    return
+            send_message(
+                chat_id,
+                f"🧹 Logs cleared\n"
+                f"📦 Queue Cleared: {cleared_queue}\n"
+                f"⚠️ Failed Cleared: {failed_count}"
+            )
+            return
 
         # ================= START =================
         if text.startswith("/start "):
