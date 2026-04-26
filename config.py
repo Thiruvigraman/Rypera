@@ -10,7 +10,7 @@ load_dotenv()
 # ================= REQUIRED VARS =================
 REQUIRED_VARS = [
     "BOT_TOKEN",
-    "ADMIN_ID",
+    "ADMIN_IDS",
     "BOT_USERNAME",
     "MONGODB_URI",
     "STORAGE_CHAT_ID",
@@ -27,7 +27,12 @@ if missing:
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_IDS = [
+    int(x.strip())
+    for x in os.getenv("ADMIN_IDS", "").split(",")
+    if x.strip()
+]
+
 STORAGE_CHAT_ID = int(os.getenv("STORAGE_CHAT_ID"))
 
 MONGODB_URI = os.getenv("MONGODB_URI")
