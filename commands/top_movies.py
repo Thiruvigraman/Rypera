@@ -3,6 +3,8 @@
 from database import get_top_movies
 from bot import send_message
 from webhook import log_to_discord
+from utils import get_username
+username = get_username(user)
 
 
 def handle_top_movies(chat_id, user):
@@ -18,7 +20,6 @@ def handle_top_movies(chat_id, user):
 
     send_message(chat_id, msg)
 
-    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
     log_to_discord(
         message="🔥 Top Movies Viewed",
