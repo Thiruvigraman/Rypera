@@ -134,7 +134,11 @@ def save_movie(name, file_id):
             upsert=True
         )
 
-        refresh_movie_cache()  # ✅ inside try
+        if REDIS_AVAILABLE:
+    cache = get_cache("movies:all") or {}
+    cache[name] = {"file_id": file_id, "token": token}
+    set_cache("movies:all", cache, ttl=60)
+
 
         return token
 
