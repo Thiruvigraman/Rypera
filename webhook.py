@@ -201,9 +201,7 @@ def flush(log_type: str) -> bool:
 
         return success
 
-    except Exception:
-        return False
-
+ 
     except Exception as e:
         logging.error(f"{log_type} flush error: {e}")
 
@@ -255,8 +253,6 @@ def log_to_discord(
 
         return True
 
-    except Exception:
-        return False
-
+ 
     except Exception as e:
         print("LOGGING FAILURE:", str(e))
