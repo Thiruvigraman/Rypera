@@ -204,6 +204,7 @@ def flush(log_type: str) -> bool:
  
     except Exception as e:
         logging.error(f"{log_type} flush error: {e}")
+   return False
 
 
 def flush_all():
