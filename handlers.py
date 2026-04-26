@@ -48,16 +48,8 @@ def log_access_async(user, user_id, movie_name):
     try:
         username = get_user_name(user)
 
-        log_to_discord(
-            "🎬 File accessed",
-            "access",
-            "info",
-            fields={
-                "user": username,
-                "user_id": user_id,
-                "movie": movie_name
-            }
-        )
+        save_access_log(user_id, movie["name"])
+
     except:
         pass
 
