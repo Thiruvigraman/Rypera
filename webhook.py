@@ -72,19 +72,26 @@ def validate_webhook_url(url: str) -> bool:
 
 # ================= EMBED =================
 
+MAX_VALUE_LENGTH = 900
+
+def safe_truncate(text):
+    return text[:MAX_VALUE_LENGTH] + "..." if len(text) > MAX_VALUE_LENGTH else text
+
+
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
     for entry in entries:
         try:
-            value = "\n".join(
-                [f"**{k}**: {v}" for k, v in entry.get("fields", {}).items()]
+            raw = "\n".join(
+                [f"{k}: {v}" for k, v in entry.get("fields", {}).items()]
             )
+            value = safe_truncate(raw)
         except Exception:
             value = "Invalid field data"
 
         fields.append({
-            "name": entry.get("message", "Log"),
+            "name": safe_truncate(entry.get("message", "Log"))[:256],
             "value": value or "—",
             "inline": False,
         })
@@ -102,7 +109,6 @@ def build_embed(log_type: str, entries: List[dict]):
         ]
     }
 
-
 # ================= SEND =================
 
 LAST_SEND_TIME = 0
@@ -116,6 +122,8 @@ def send_with_retry(url: str, payload: dict, log_type: str):
         try:
             res = session.post(url, json=payload, timeout=5)
 
+            print("DISCORD:", res.status_code, res.text)  # MUST be inside try
+
             if res.status_code in (200, 204):
                 return True
 
@@ -123,8 +131,8 @@ def send_with_retry(url: str, payload: dict, log_type: str):
                 time.sleep(10)
                 continue
 
-        except Exception:
-            pass
+        except Exception as e:
+            print("SEND ERROR:", str(e))
 
         time.sleep(delays[attempt])
 
