@@ -1,12 +1,14 @@
 # file: database.py
 
+import time
+import secrets
+import string
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, DuplicateKeyError
 from config import MONGODB_URI, ADMIN_ID
 from webhook import log_to_discord
-import time
-import secrets
-import string
+from redis_client import get_cache, set_cache, delete_cache, REDIS_AVAILABLE
+
 
 
 # ================= TOKEN =================
