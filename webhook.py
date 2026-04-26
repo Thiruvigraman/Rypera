@@ -17,6 +17,7 @@ from config import (
 
 MAX_FIELDS = 25
 FAILED_LOGS: List[dict] = []
+MAX_FAILED_LOGS = 5000
 session = requests.Session()
 
 # ================= CONFIG =================
@@ -39,6 +40,13 @@ COLORS = {
 def validate_webhook_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
+# ================= FALLBACK STORAGE =================
+def write_fallback_log(entry):
+    try:
+        with open("failed_logs.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
 
 # ================= ACCESS FORMAT =================
 
@@ -104,7 +112,9 @@ def send_logs(log_type: str, entries: List[dict]):
     url = webhook_map.get(log_type) or webhook_map["status"]
 
     if not validate_webhook_url(url):
-        FAILED_LOGS.extend(entries)
+        for e in entries:
+            add_failed(e)
+            write_fallback_log(e)
         return False
 
     # ACCESS
@@ -112,7 +122,7 @@ def send_logs(log_type: str, entries: List[dict]):
         for entry in entries:
             msg = build_access_text(entry)
             if not send_payload(url, {"content": msg}):
-                FAILED_LOGS.append(entry)
+                add_failed(entry)
                 write_fallback_log(entry)
         return True
 
@@ -127,10 +137,12 @@ def send_logs(log_type: str, entries: List[dict]):
 
             if not success:
                 print("⚠️ ERROR webhook failed → fallback")
+
                 if not send_payload(webhook_map["status"], build_embed(log_type, entries)):
-                    FAILED_LOGS.extend(entries)
                     for e in entries:
+                        add_failed(e)
                         write_fallback_log(e)
+
                 return False
 
             return True
@@ -139,11 +151,12 @@ def send_logs(log_type: str, entries: List[dict]):
     success = send_payload(url, build_embed(log_type, entries))
 
     if not success:
-        FAILED_LOGS.extend(entries)
         for e in entries:
+            add_failed(e)
             write_fallback_log(e)
 
     return success
+
 # ================= RETRY =================
 
 def retry_failed_logs():
@@ -167,8 +180,18 @@ def retry_failed_logs():
         if not success:
             remaining.append(entry)
 
+        time.sleep(0.2 + (0.05 * len(remaining)))
+
     FAILED_LOGS.clear()
-    FAILED_LOGS.extend(remaining)
+    for e in remaining:
+        add_failed(e)
+
+# ================= HELPER =================
+
+def add_failed(entry):
+    if len(FAILED_LOGS) >= MAX_FAILED_LOGS:
+        FAILED_LOGS.pop(0)
+    FAILED_LOGS.append(entry)
 
 # ================= WORKER =================
 
@@ -223,7 +246,10 @@ def log_to_discord(
         }
 
         if log_queue.qsize() > 10000:
-            return False
+            try:
+                log_queue.get_nowait()  # drop oldest
+            except Exception:
+                pass
 
         log_queue.put(entry)
         return True
