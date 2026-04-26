@@ -135,14 +135,13 @@ def save_movie(name, file_id):
         )
 
         if REDIS_AVAILABLE:
-    cache = get_cache("movies:all") or {}
-    cache[name] = {"file_id": file_id, "token": token}
-    set_cache("movies:all", cache, ttl=60)
-
+            cache = get_cache("movies:all") or {}
+            cache[name] = {"file_id": file_id, "token": token}
+            set_cache("movies:all", cache, ttl=60)
 
         return token
 
-    except Exception as e:
+    except Exception:
         log_to_discord("Save movie failed", "status", "error")
         return None
 
@@ -164,10 +163,11 @@ def delete_movie(name):
     try:
         movies_collection.delete_one({"name": name})
 
-if REDIS_AVAILABLE:
-    cache = get_cache("movies:all") or {}
-    cache.pop(name, None)
-    set_cache("movies:all", cache, ttl=60)
+        if REDIS_AVAILABLE:
+            cache = get_cache("movies:all") or {}
+            cache.pop(name, None)
+            set_cache("movies:all", cache, ttl=60)
+
     except Exception:
         pass
 
@@ -190,14 +190,12 @@ def rename_movie(old_name, new_name):
             "access_count": movie.get("access_count", 0)
         })
 
-        
-if REDIS_AVAILABLE:
-    cache = get_cache("movies:all") or {}
-    data = cache.pop(old_name, None)
-    if data:
-        cache[new_name] = data
-        set_cache("movies:all", cache, ttl=60)
-
+        if REDIS_AVAILABLE:
+            cache = get_cache("movies:all") or {}
+            data = cache.pop(old_name, None)
+            if data:
+                cache[new_name] = data
+                set_cache("movies:all", cache, ttl=60)
 
         return True
 
@@ -208,7 +206,6 @@ def load_movies_cached():
     if not MONGO_AVAILABLE:
         return {}
 
-    # try redis first
     cached = get_cache("movies:all")
     if cached:
         return cached
@@ -224,7 +221,9 @@ def load_movies_cached():
             )
         }
 
-        set_cache("movies:all", data, ttl=60)
+        if REDIS_AVAILABLE:
+            set_cache("movies:all", data, ttl=60)
+
         return data
 
     except Exception:
