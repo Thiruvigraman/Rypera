@@ -1,4 +1,4 @@
-# file : webhook.py
+# file: webhook.py
 
 import os
 import requests
@@ -23,21 +23,19 @@ THROTTLE_LOCK = Lock()
 FAILED_LOGS: List[dict] = []
 
 MAX_FAILED_LOGS = 5000
-MAX_RETRY_PER_CYCLE = 30
+MAX_RETRY_PER_CYCLE = 50
 MAX_FIELDS = 10
-MAX_BATCH_SIZE = 5
 
 LAST_SEND = 0
 session = requests.Session()
 
-# ================= LOG CONTROL =================
+# ================= GLOBAL LOG SWITCH =================
 
 LOGGING_ENABLED = True
 FREEZE_LOGS = False
 FREEZE_UNTIL = 0
 FREEZE_DURATION = 3600
 ADMIN_ALERT_CHAT_ID = None
-
 
 def set_logging(enabled: bool):
     global LOGGING_ENABLED
@@ -48,8 +46,13 @@ def is_logging_enabled():
     return LOGGING_ENABLED
 
 
+def get_log_queue_size():
+    return log_queue.qsize()
+
+
 def set_freeze(enabled: bool, duration: int = None):
     global FREEZE_LOGS, FREEZE_UNTIL
+
     FREEZE_LOGS = enabled
 
     if enabled:
@@ -57,12 +60,16 @@ def set_freeze(enabled: bool, duration: int = None):
     else:
         FREEZE_UNTIL = 0
 
+def is_frozen():
+    return FREEZE_LOGS
 
 def check_auto_unfreeze():
     global FREEZE_LOGS
-    if FREEZE_LOGS and FREEZE_UNTIL and time.time() >= FREEZE_UNTIL:
-        print("🔥 AUTO UNFREEZE")
-        FREEZE_LOGS = False
+
+    if FREEZE_LOGS and FREEZE_UNTIL > 0:
+        if time.time() >= FREEZE_UNTIL:
+            print("🔥 AUTO UNFREEZE TRIGGERED")
+            FREEZE_LOGS = False
 
 
 # ================= CONFIG =================
@@ -80,10 +87,9 @@ COLORS = {
     "error": 0xE74C3C,
 }
 
-
 # ================= THROTTLE =================
 
-def global_throttle(min_interval=0.25):
+def global_throttle(min_interval=0.2):
     global LAST_SEND
     with THROTTLE_LOCK:
         now = time.time()
@@ -94,12 +100,12 @@ def global_throttle(min_interval=0.25):
 
         LAST_SEND = time.time()
 
-
-# ================= UTIL =================
+# ================= SAFETY =================
 
 def validate_webhook_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
+# ================= FALLBACK =================
 
 def write_fallback_log(entry):
     try:
@@ -111,23 +117,21 @@ def write_fallback_log(entry):
     except Exception:
         pass
 
-
 # ================= BUILDERS =================
 
 def build_access_text(entry):
     f = entry.get("fields", {})
     return (
         "📥 **ACCESS LOGS**\n\n"
-        f"👤 {f.get('User')}\n"
-        f"🆔 {f.get('User ID')}\n"
-        f"🎬 {f.get('Movie')}"
+        f"👤 User: {f.get('User')}\n"
+        f"🆔 User ID: {f.get('User ID')}\n"
+        f"🎬 Movie: {f.get('Movie')}"
     )
-
 
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
-    for entry in entries[:MAX_FIELDS]:
+    for entry in entries:
         value = "\n".join(
             [f"**{k}**: {v}" for k, v in entry.get("fields", {}).items()]
         )
@@ -139,16 +143,166 @@ def build_embed(log_type: str, entries: List[dict]):
         })
 
     return {
-        "embeds": [{
-            "title": f"{log_type.upper()} LOGS",
-            "color": COLORS.get(entries[-1].get("severity"), 0x95A5A6),
-            "fields": fields,
-            "footer": {
-                "text": f"{len(entries)} events • {datetime.utcnow().strftime('%H:%M:%S UTC')}"
-            },
-        }]
+        "embeds": [
+            {
+                "title": f"{log_type.upper()} LOGS",
+                "color": COLORS.get(entries[-1].get("severity"), 0x95A5A6),
+                "fields": fields[:MAX_FIELDS],
+                "footer": {
+                    "text": f"{len(entries)} events • {datetime.utcnow().strftime('%H:%M:%S UTC')}"
+                },
+            }
+        ]
     }
 
+
+# ================= CLEAR LOG QUEUE =================
+
+def clear_all_logs():
+    cleared_queue = 0
+
+    # clear queue
+    while not log_queue.empty():
+        try:
+            log_queue.get_nowait()
+            cleared_queue += 1
+        except Exception:
+            break
+
+    # clear failed logs
+    with FAILED_LOGS_LOCK:
+        failed_count = len(FAILED_LOGS)
+        FAILED_LOGS.clear()
+
+    return cleared_queue, failed_count
+
+# ================= SEND =================
+
+def send_payload(url, payload):
+    try:
+        global_throttle()
+
+        # ✅ DEBUG (correct place)
+        print("➡️ Sending to:", url)
+        print("➡️ Payload:", payload)
+
+        res = session.post(
+            url,
+            json=payload,
+            timeout=5,
+            headers={"User-Agent": "DiscordBot"}
+        )
+
+        text = res.text.strip()
+
+        def safe_json():
+            try:
+                return res.json()
+            except Exception:
+                return {}
+
+        if "cloudflare" in text.lower() or "error 1015" in text.lower():
+    print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
+
+    set_freeze(True)
+
+    try:
+        from bot import send_message
+
+        if ADMIN_ALERT_CHAT_ID:
+            send_message(
+                ADMIN_ALERT_CHAT_ID,
+                "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
+            )
+    except Exception:
+        pass
+
+    time.sleep(5)
+    return False
+
+        if res.status_code == 429:
+            retry_after = safe_json().get("retry_after", 2)
+            print("RATE LIMITED:", retry_after)
+            time.sleep(max(2, retry_after))
+            return False
+
+        if res.status_code >= 400:
+            print("DISCORD ERROR:", res.status_code, text[:200])
+            time.sleep(1)
+            return False
+
+        print("✅ SENT OK")
+        return True
+
+    except Exception as e:
+        print("SEND ERROR:", str(e))
+        return False
+
+# ================= SEND LOGS =================
+
+def send_logs(log_type: str, entries: List[dict]):
+    url = webhook_map.get(log_type) or webhook_map["status"]
+
+    if not validate_webhook_url(url):
+        for e in entries:
+            add_failed(e)
+            write_fallback_log(e)
+        return False
+
+    if log_type == "access":
+        for entry in entries:
+            if not send_payload(url, {"content": build_access_text(entry)}):
+                add_failed(entry)
+                write_fallback_log(entry)
+            time.sleep(0.1)
+        return True
+
+    if any(e["severity"] == "error" for e in entries):
+        error_url = webhook_map.get("error")
+        if validate_webhook_url(error_url):
+            if send_payload(error_url, build_embed(log_type, entries)):
+                return True
+
+    success = send_payload(url, build_embed(log_type, entries))
+
+    if not success:
+        for e in entries:
+            add_failed(e)
+            write_fallback_log(e)
+
+    return success
+
+# ================= RETRY =================
+
+def retry_failed_logs():
+    if not FAILED_LOGS:
+        return
+
+    with FAILED_LOGS_LOCK:
+        current = FAILED_LOGS[:MAX_RETRY_PER_CYCLE]
+        remaining = FAILED_LOGS[MAX_RETRY_PER_CYCLE:]
+
+    retry_failed = []
+
+    for entry in current:
+        entry["_retries"] = entry.get("_retries", 0)
+
+        url = webhook_map.get(entry.get("log_type"), webhook_map["status"])
+
+        if entry.get("log_type") == "access":
+            success = send_payload(url, {"content": build_access_text(entry)})
+        else:
+            success = send_payload(url, build_embed(entry.get("log_type"), [entry]))
+
+        if not success:
+            retry_failed.append(entry)
+
+        time.sleep(0.4)
+
+    with FAILED_LOGS_LOCK:
+        FAILED_LOGS.clear()
+        FAILED_LOGS.extend(remaining)
+        FAILED_LOGS.extend(retry_failed)
 
 # ================= FAILED =================
 
@@ -164,100 +318,15 @@ def add_failed(entry):
 
         FAILED_LOGS.append(entry)
 
-
-def retry_failed_logs():
-    if not FAILED_LOGS:
-        return
-
-    with FAILED_LOGS_LOCK:
-        batch = FAILED_LOGS[:MAX_RETRY_PER_CYCLE]
-        FAILED_LOGS[:] = FAILED_LOGS[MAX_RETRY_PER_CYCLE:]
-
-    for entry in batch:
-        url = webhook_map.get(entry.get("log_type"), webhook_map["status"])
-
-        if entry.get("log_type") == "access":
-            success = send_payload(url, {"content": build_access_text(entry)})
-        else:
-            success = send_payload(url, build_embed(entry["log_type"], [entry]))
-
-        if not success:
-            add_failed(entry)
-
-        time.sleep(0.3)
-
-
-# ================= SEND =================
-
-def send_payload(url, payload):
-    try:
-        if not validate_webhook_url(url):
-            return False
-
-        global_throttle()
-
-        res = session.post(url, json=payload, timeout=5)
-        text = res.text.lower()
-
-        # Cloudflare protection
-        if "cloudflare" in text or "error 1015" in text:
-            print("🚫 CLOUDFLARE → FREEZE")
-            set_freeze(True)
-            return False
-
-        if res.status_code == 429:
-            retry_after = res.json().get("retry_after", 2)
-            time.sleep(max(2, retry_after))
-            return False
-
-        if res.status_code >= 400:
-            return False
-
-        return True
-
-    except Exception:
-        return False
-
-
-def send_logs(log_type: str, entries: List[dict]):
-    url = webhook_map.get(log_type) or webhook_map["status"]
-
-    # Access logs = plain text
-    if log_type == "access":
-        for e in entries:
-            if not send_payload(url, {"content": build_access_text(e)}):
-                add_failed(e)
-                write_fallback_log(e)
-            time.sleep(0.1)
-        return True
-
-    # Error routing
-    if any(e["severity"] == "error" for e in entries):
-        error_url = webhook_map.get("error")
-        if validate_webhook_url(error_url):
-            send_payload(error_url, build_embed(log_type, entries))
-
-    success = send_payload(url, build_embed(log_type, entries))
-
-    if not success:
-        for e in entries:
-            add_failed(e)
-            write_fallback_log(e)
-
-    return success
-
-
 # ================= WORKER =================
 
 def log_worker(stop_event=None):
-    last_retry = 0
-
     while True:
         if stop_event and stop_event.is_set():
             break
+         check_auto_unfreeze()
 
-        check_auto_unfreeze()
-
+        # 🧊 FREEZE MODE
         if FREEZE_LOGS:
             time.sleep(5)
             continue
@@ -267,6 +336,7 @@ def log_worker(stop_event=None):
 
         grouped = {}
 
+        # 🔥 SAFE DRAIN (no empty() race)
         while True:
             try:
                 entry = log_queue.get_nowait()
@@ -274,44 +344,59 @@ def log_worker(stop_event=None):
             except Exception:
                 break
 
-        # retry every 10 sec
-        if time.time() - last_retry > 10:
+        # 🔁 Retry occasionally
+        last_retry_time = getattr(log_worker, "_last_retry", 0)
+        if time.time() - last_retry_time > 10:
             retry_failed_logs()
-            last_retry = time.time()
+            log_worker._last_retry = time.time()
 
+        if not grouped:
+            continue
+
+        # 🔥 PROCESS ALL (no requeue)
         for log_type, entries in grouped.items():
-            for i in range(0, len(entries), MAX_BATCH_SIZE):
-                batch = entries[i:i + MAX_BATCH_SIZE]
-                send_logs(log_type, batch)
+            try:
+                # split into chunks of 5
+                for i in range(0, len(entries), 5):
+                    batch = entries[i:i+5]
+                    send_logs(log_type, batch)
 
+            except Exception as e:
+                print("Batch send error:", e)
+
+        # mark all done
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
-
 
 # ================= MAIN =================
 
 def log_to_discord(message, log_type="status", severity="info", fields=None, force_flush=False):
-    if not LOGGING_ENABLED or FREEZE_LOGS:
-        return False
+    try:
+        # 🚫 HARD STOP
+        if not LOGGING_ENABLED or FREEZE_LOGS:
+            return False
 
-    entry = {
-        "message": str(message),
-        "severity": severity,
-        "fields": fields or {},
-        "timestamp": datetime.utcnow().isoformat(),
-        "log_type": log_type,
-    }
+        entry = {
+            "message": str(message),
+            "severity": severity,
+            "fields": fields or {},
+            "timestamp": datetime.utcnow().isoformat(),
+            "log_type": log_type,
+        }
 
-    if force_flush:
-        send_logs(log_type, [entry])
+        if force_flush:
+            send_logs(log_type, [entry])
+            return True
+
+        if log_queue.qsize() > 10000:
+            try:
+                log_queue.get_nowait()
+            except Exception:
+                pass
+
+        log_queue.put(entry)
         return True
 
-    # queue protection
-    if log_queue.qsize() > 10000:
-        try:
-            log_queue.get_nowait()
-        except Exception:
-            pass
-
-    log_queue.put(entry)
-    return True
+    except Exception as e:
+        print("LOGGING FAILURE:", str(e))
+        return False
