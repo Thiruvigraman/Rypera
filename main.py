@@ -97,7 +97,7 @@ def startup_check():
         # Movies
         try:
             movie_count = movies_collection.count_documents({})
-        except:
+        except Exception:
             movie_count = "Error"
 
         # RAM
