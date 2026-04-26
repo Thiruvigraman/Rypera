@@ -53,6 +53,7 @@ webhook_map = {
     "access": DISCORD_WEBHOOK_FILE_ACCESS,
 }
 
+session = requests.Session()
 
 # ================= FALLBACK =================
 
