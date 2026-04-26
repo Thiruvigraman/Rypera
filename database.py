@@ -80,7 +80,7 @@ for attempt in range(max_retries):
             try:
                 from bot import send_message
                 send_message(ADMIN_ID, "❌ MongoDB connection failed")
-            except:
+            except Exception:
                 pass
 
             raise
@@ -147,7 +147,7 @@ def get_movie_by_token(token):
 
     try:
         return movies_collection.find_one({"token": token})
-    except:
+    except Exception:
         return None
 
 
@@ -158,7 +158,7 @@ def delete_movie(name):
     try:
         movies_collection.delete_one({"name": name})
         refresh_movie_cache()  # ✅ inside try
-    except:
+    except Exception:
         pass
 
 def rename_movie(old_name, new_name):
@@ -184,7 +184,7 @@ def rename_movie(old_name, new_name):
 
         return True
 
-    except:
+    except Exception:
         return False
 
 
@@ -199,7 +199,7 @@ def increment_movie_access(name):
             {"$inc": {"access_count": 1}},
             upsert=True
         )
-    except:
+    except Exception:
         pass
 
 
@@ -214,7 +214,7 @@ def get_top_movies(limit=5):
             .sort("access_count", -1)
             .limit(limit)
         )
-    except:
+    except Exception:
         return []
 
 
@@ -229,7 +229,7 @@ def add_user(user_id, display_name):
             {"$set": {"user_id": user_id, "display_name": display_name}},
             upsert=True
         )
-    except:
+    except Exception:
         pass
 
 
@@ -239,7 +239,7 @@ def get_all_users():
 
     try:
         return list(users_collection.find({}, {"user_id": 1, "_id": 0}))
-    except:
+    except Exception:
         return []
 
 
@@ -252,7 +252,7 @@ def get_stats():
             "movie_count": movies_collection.count_documents({}),
             "user_count": users_collection.count_documents({})
         }
-    except:
+    except Exception:
         return {"movie_count": 0, "user_count": 0}
 
 
@@ -268,7 +268,7 @@ def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
             "warning_message_id": warning_message_id,
             "timestamp": timestamp
         })
-    except:
+    except Exception:
         pass
 
 
@@ -279,7 +279,7 @@ def get_pending_files(expiry_minutes=15):
     try:
         cutoff = time.time() - (expiry_minutes * 60)
         return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
-    except:
+    except Exception:
         return []
 
 
@@ -292,7 +292,7 @@ def delete_sent_file_record(chat_id, file_message_id):
             "chat_id": chat_id,
             "file_message_id": file_message_id
         })
-    except:
+    except Exception:
         pass
 
 
@@ -342,7 +342,7 @@ def refresh_movie_cache():
             )
         }
         LAST_CACHE_TIME = time.time()
-    except:
+    except Exception:
         pass
 
 # ================= LOG STORAGE =================
@@ -358,14 +358,14 @@ def save_access_log(user_id, movie_name):
             "timestamp": time.time(),
             "sent": False
         })
-    except:
+    except Exception:
         pass
 
 
 def get_unsent_logs(limit=20):
     try:
         return list(db['access_logs'].find({"sent": False}).limit(limit))
-    except:
+    except Exception:
         return []
 
 
@@ -375,7 +375,7 @@ def mark_log_sent(log_id):
             {"_id": log_id},
             {"$set": {"sent": True}}
         )
-    except:
+    except Exception:
         pass
 
 
@@ -387,7 +387,7 @@ def setup_log_ttl():
             "timestamp",
             expireAfterSeconds=7 * 24 * 60 * 60  # 7 days
         )
-    except:
+    except Exception:
         pass
 
 # ================= DB SIZE =================
@@ -400,5 +400,5 @@ def get_db_size_mb():
         size_bytes = stats.get("dataSize", 0)
         size_mb = size_bytes / 1024 / 1024
         return round(size_mb, 2)
-    except:
+    except Exception:
         return 0
