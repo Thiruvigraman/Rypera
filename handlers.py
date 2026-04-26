@@ -1,6 +1,6 @@
 # file: handlers.py
 
-from config import ADMIN_ID, BOT_TOKEN
+from config import ADMIN_IDS, BOT_TOKEN
 from database import (
     add_user,
     get_movie_by_token,
@@ -34,8 +34,7 @@ PENDING_ANNOUNCEMENT = {}
 
 
 def is_admin(user_id):
-    return str(user_id) == str(ADMIN_ID)
-
+    return user_id in ADMIN_IDS
 
 def get_user_name(user):
     if user.get("username"):
