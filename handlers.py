@@ -158,32 +158,31 @@ def process_update(update):
                 safe_send(chat_id, "❌ Cancelled")
                 return
 
+
         # ================= MESSAGE =================
+        if "message" not in update:
+            return
 
-if "message" not in update:
-    return
+        msg = update["message"]
+        chat_id = msg["chat"]["id"]
+        user = msg["from"]
+        user_id = user["id"]
 
-msg = update["message"]
-chat_id = msg["chat"]["id"]
-user = msg["from"]
-user_id = user["id"]
+        # ✅ SET ADMIN ALERT TARGET
+        import webhook
+        if is_admin(user_id):
+            webhook.ADMIN_ALERT_CHAT_ID = chat_id
 
-# ✅ FIXED GLOBAL ALERT SET
-import webhook
-if is_admin(user_id):
-    webhook.ADMIN_ALERT_CHAT_ID = chat_id
-
-# FILE UPLOAD
-if "document" in msg and is_admin(user_id):
-    handle_upload(chat_id, msg, user)
-    return
+        # FILE UPLOAD
+        if "document" in msg and is_admin(user_id):
+            handle_upload(chat_id, msg, user)
+            return
 
         if is_rate_limited(user_id):
             return
 
         text = msg.get("text", "")
 
-        # ignore non-text users
         if not text and not is_admin(user_id):
             return
 
@@ -227,7 +226,7 @@ if "document" in msg and is_admin(user_id):
             handle_list_movies(chat_id, user)
             return
 
- # ================= LOG COMMANDS =================
+        # ================= LOG COMMANDS =================
         if text == "/pause_logs" and is_admin(user_id):
             set_logging(False)
             send_message(chat_id, "🛑 Logging paused")
