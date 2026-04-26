@@ -19,7 +19,7 @@ from config import (
 
 MAX_FIELDS = 25
 LAST_SEND_TIME = 0
-MIN_INTERVAL = 5
+
 
 # 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
 LOG_LEVELS = {
@@ -106,17 +106,10 @@ def build_embed(log_type: str, entries: List[dict]):
 # ================= SEND =================
 
 LAST_SEND_TIME = 0
-MIN_INTERVAL = 2.5  # increase delay
+
 
 
 def send_with_retry(url: str, payload: dict, log_type: str):
-    global LAST_SEND_TIME
-
-    now = time.time()
-    wait = MIN_INTERVAL - (now - LAST_SEND_TIME)
-    if wait > 0:
-        time.sleep(wait)
-
     delays = [3, 6, 10]
 
     for attempt in range(len(delays)):
@@ -124,11 +117,10 @@ def send_with_retry(url: str, payload: dict, log_type: str):
             res = session.post(url, json=payload, timeout=5)
 
             if res.status_code in (200, 204):
-                LAST_SEND_TIME = time.time()
                 return True
 
             if res.status_code == 429:
-                time.sleep(10)  # hard cooldown
+                time.sleep(10)
                 continue
 
         except Exception:
@@ -178,17 +170,23 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
 # ========== LOG WORKER==========
 
 def log_worker(stop_event=None):
+    BATCH_INTERVAL = 10  # seconds
+
     while True:
         if stop_event and stop_event.is_set():
             break
 
+        time.sleep(BATCH_INTERVAL)
+
         grouped = {}
 
-        try:
-            entry = log_queue.get(timeout=2)
-            grouped.setdefault(entry["log_type"], []).append(entry)
-        except Exception:
-            pass
+        # collect everything available (non-blocking)
+        while not log_queue.empty():
+            try:
+                entry = log_queue.get_nowait()
+                grouped.setdefault(entry["log_type"], []).append(entry)
+            except Exception:
+                break
 
         if not grouped:
             continue
@@ -197,13 +195,11 @@ def log_worker(stop_event=None):
             try:
                 send_in_chunks(log_type, entries)
             except Exception as e:
-                print("Worker error:", e)
+                print("Batch send error:", e)
 
-        time.sleep(4)  # 🔥 VERY IMPORTANT cooldown
-
+        # mark all done
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
-
 
 # ================= MAIN LOG =================
 
@@ -233,12 +229,7 @@ def log_to_discord(
             except Exception:
                 pass
 
-        # 🔥 FIXED INDENTATION
-        if log_queue.qsize() > 100:
-            return False
-
         log_queue.put({**entry, "log_type": log_type})
-
         return True
 
     except Exception as e:
