@@ -240,7 +240,7 @@ def log_to_discord(
     except Exception:
         pass
 
-        log_queue.put({**entry, "log_type": log_type})
+log_queue.put({**entry, "log_type": log_type})
 
         return True
 
