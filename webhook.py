@@ -256,4 +256,5 @@ def log_to_discord(
 
  
     except Exception as e:
-        print("LOGGING FAILURE:", str(e))
+    print("LOGGING FAILURE:", str(e))
+    return False
