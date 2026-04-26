@@ -1,13 +1,11 @@
-# file: commands/announcement.py
+#file: commands/announcement.py
 
-import requests
 from bot import send_message
 from config import BOT_TOKEN
 from webhook import log_to_discord
 from utils import get_username
+import requests
 
-def handle_announcement(chat_id, text, user_id, pending_announcement, user):
-    username = get_username(user)
 
 def handle_announcement(chat_id, text, user_id, pending_announcement, user):
     parts = text.split(maxsplit=1)
@@ -17,6 +15,7 @@ def handle_announcement(chat_id, text, user_id, pending_announcement, user):
 
     announcement = parts[1]
     pending_announcement[user_id] = announcement
+    username = get_username(user)
 
     keyboard = {
         "inline_keyboard": [[
@@ -35,17 +34,12 @@ def handle_announcement(chat_id, text, user_id, pending_announcement, user):
             },
             timeout=10
         )
-    except:
+    except Exception:
         send_message(chat_id, "⚠️ Failed to send preview")
 
-    username = get_username(user)
-
     log_to_discord(
-        message="📢 Announcement Preview",
-        log_type="list",
-        severity="info",
-        fields={
-            "admin": username,
-            "length": len(announcement)
-        }
+        "📢 Announcement Preview",
+        "list",
+        "info",
+        fields={"admin": username, "length": len(announcement)}
     )
