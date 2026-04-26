@@ -22,10 +22,10 @@ from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 from commands.upload_movie import handle_upload
-
 import time
 import requests
 import threading
+from database import save_access_log
 
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
