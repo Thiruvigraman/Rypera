@@ -18,7 +18,8 @@ from webhook import (
     clear_all_logs,
     get_log_queue_size,
     set_freeze,
-    is_frozen
+    is_frozen,
+    ADMIN_ALERT_CHAT_ID
 )
 from bot import send_message, send_file
 from commands.generate_link import handle_generate_link
@@ -65,6 +66,9 @@ def process_update(update):
             return
 
         update_id = update.get("update_id")
+
+        if is_admin(user_id):
+    ADMIN_ALERT_CHAT_ID = chat_id
 
         # thread-safe dedupe
         with UPDATE_LOCK:
@@ -230,9 +234,18 @@ if text == "/resume_logs" and is_admin(user_id):
     send_message(chat_id, "✅ Logging resumed")
     return
 
-if text == "/freeze_logs" and is_admin(user_id):
-    set_freeze(True)
-    send_message(chat_id, "🧊 Logs frozen (worker stopped)")
+if text.startswith("/freeze_logs") and is_admin(user_id):
+    parts = text.split()
+
+    duration = 3600  # default 1h
+    if len(parts) > 1:
+        try:
+            duration = int(parts[1]) * 60  # minutes → seconds
+        except:
+            pass
+
+    set_freeze(True, duration)
+    send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
     return
 
 if text == "/unfreeze_logs" and is_admin(user_id):
