@@ -131,10 +131,6 @@ def send_file(chat_id, file_id):
         daemon=True
     ).start()
 
-    storage_message_id = None
-
-    if not storage_message_id:
-        log_to_discord("Storage skipped", "access", "warning")
 
     payload = {
         'chat_id': chat_id,
