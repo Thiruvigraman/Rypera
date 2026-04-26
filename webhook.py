@@ -152,14 +152,16 @@ def send_with_retry(url: str, payload: dict, log_type: str):
     return False
 
 # ================= CHUNKS =================
-def send_in_chunks(log_type: str, entries: List[dict]):
+def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
     url = webhook_map.get(log_type)
 
     if not validate_webhook_url(url):
         logging.error(f"{log_type} webhook invalid or missing")
         for e in entries:
             write_fallback_log(e)
-        return
+        return False
+
+    success_all = True
 
     for i in range(0, len(entries), MAX_FIELDS):
         chunk = entries[i:i + MAX_FIELDS]
@@ -169,14 +171,18 @@ def send_in_chunks(log_type: str, entries: List[dict]):
             success = send_with_retry(url, payload, log_type)
 
             if not success:
+                success_all = False
                 for e in chunk:
                     write_fallback_log(e)
 
         except Exception as e:
+            success_all = False
             logging.error(f"{log_type} chunk failed: {e}")
 
             for e in chunk:
                 write_fallback_log(e)
+
+    return success_all
 
 
 # ================= FLUSH =================
