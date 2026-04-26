@@ -114,6 +114,9 @@ def build_embed(log_type: str, entries: List[dict]):
         ]
     }
 
+print("➡️ Sending to:", url)
+print("➡️ Payload:", payload)
+
 # ================= SEND =================
 
 def send_payload(url, payload):
