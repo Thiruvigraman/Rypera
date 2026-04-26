@@ -103,7 +103,7 @@ def forward_file_to_storage(file_id):
         data = res.json()
 
         if data.get('ok'):
-            log_to_discord("📦 File stored", "access", "info")
+            log_to_discord("📦 File stored", "list", "info")
             return data['result']['message_id']
 
     except Exception as e:
@@ -171,12 +171,7 @@ def send_file(chat_id, file_id):
                 args=[chat_id, file_message_id, warning_message_id]
             ).start()
 
-        log_to_discord(
-            "📤 File Delivered",
-            "access",
-            "info",
-            fields={"chat_id": chat_id}
-        )
+        
 
         return data
 
