@@ -14,11 +14,16 @@ from config import (
     DISCORD_WEBHOOK_FILE_ACCESS,
     DISCORD_WEBHOOK_ERRORS,
 )
+from threading import Lock
 
+FAILED_LOGS_LOCK = Lock()
 MAX_FIELDS = 25
 FAILED_LOGS: List[dict] = []
 MAX_FAILED_LOGS = 5000
+MAX_RETRY_PER_CYCLE = 100
 session = requests.Session()
+
+
 
 # ================= CONFIG =================
 
@@ -41,13 +46,17 @@ def validate_webhook_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
 # ================= FALLBACK STORAGE =================
+
 def write_fallback_log(entry):
     try:
+        if os.path.exists("failed_logs.txt") and os.path.getsize("failed_logs.txt") > 5 * 1024 * 1024:
+            os.remove("failed_logs.txt")  # reset
+
         with open("failed_logs.txt", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
+
     except Exception:
         pass
-
 # ================= ACCESS FORMAT =================
 
 def build_access_text(entry):
@@ -97,14 +106,20 @@ def build_embed(log_type: str, entries: List[dict]):
 def send_payload(url, payload):
     try:
         res = session.post(url, json=payload, timeout=5)
-        print("DISCORD:", res.status_code, res.text)
+
+        if res.status_code == 429:
+            retry_after = res.json().get("retry_after", 1)
+            time.sleep(retry_after)
+            return False
+
+        if res.status_code >= 400:
+            print("DISCORD ERROR:", res.status_code, res.text)
 
         return res.status_code in (200, 204)
 
     except Exception as e:
         print("SEND ERROR:", str(e))
         return False
-
 
 # ================= MAIN SENDER =================
 
@@ -165,9 +180,13 @@ def retry_failed_logs():
 
     print(f"🔁 Retrying {len(FAILED_LOGS)} failed logs...")
 
-    remaining = []
+    with FAILED_LOGS_LOCK:
+        current_logs = FAILED_LOGS[:MAX_RETRY_PER_CYCLE]
+        remaining_logs = FAILED_LOGS[MAX_RETRY_PER_CYCLE:]
 
-    for entry in FAILED_LOGS:
+    retry_failed = []
+
+    for entry in current_logs:
         log_type = entry.get("log_type", "status")
         url = webhook_map.get(log_type) or webhook_map["status"]
 
@@ -178,25 +197,29 @@ def retry_failed_logs():
             success = send_payload(url, build_embed(log_type, [entry]))
 
         if not success:
-            remaining.append(entry)
+            retry_failed.append(entry)
 
-        time.sleep(0.2 + (0.05 * len(remaining)))
+        delay = min(2, 0.2 + (0.02 * len(retry_failed)))
+        time.sleep(delay)
 
-    FAILED_LOGS.clear()
-    for e in remaining:
-        add_failed(e)
+    # rebuild queue safely
+    with FAILED_LOGS_LOCK:
+        FAILED_LOGS.clear()
+        FAILED_LOGS.extend(remaining_logs)
+        FAILED_LOGS.extend(retry_failed)
 
 # ================= HELPER =================
 
 def add_failed(entry):
-    if len(FAILED_LOGS) >= MAX_FAILED_LOGS:
-        FAILED_LOGS.pop(0)
-    FAILED_LOGS.append(entry)
+    with FAILED_LOGS_LOCK:
+        if len(FAILED_LOGS) >= MAX_FAILED_LOGS:
+            FAILED_LOGS.pop(0)
+        FAILED_LOGS.append(entry)
 
 # ================= WORKER =================
 
 def log_worker(stop_event=None):
-    BATCH_INTERVAL = 10
+    BATCH_INTERVAL = 5
 
     while True:
         if stop_event and stop_event.is_set():
@@ -228,14 +251,10 @@ def log_worker(stop_event=None):
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
 
+
 # ================= MAIN LOG =================
 
-def log_to_discord(
-    message: str,
-    log_type="status",
-    severity="info",
-    fields: Optional[Dict[str, str]] = None,
-) -> bool:
+def log_to_discord(message, log_type="status", severity="info", fields=None):
     try:
         entry = {
             "message": str(message),
@@ -247,11 +266,11 @@ def log_to_discord(
 
         if log_queue.qsize() > 10000:
             try:
-                log_queue.get_nowait()  # drop oldest
+                log_queue.get_nowait()
             except Exception:
                 pass
 
-        log_queue.put(entry)
+        log_queue.put(entry)   # ✅ correct place
         return True
 
     except Exception as e:
