@@ -21,6 +21,7 @@ MAX_FIELDS = 10
 FAILED_LOGS: List[dict] = []
 MAX_FAILED_LOGS = 5000
 MAX_RETRY_PER_CYCLE = 100
+
 session = requests.Session()
 
 
@@ -105,6 +106,8 @@ def build_embed(log_type: str, entries: List[dict]):
 
 def send_payload(url, payload):
     try:
+        global_throttle()  
+
         res = session.post(
             url,
             json=payload,
@@ -121,7 +124,7 @@ def send_payload(url, payload):
 
         if res.status_code >= 400:
             print("DISCORD ERROR:", res.status_code)
-            print(res.text[:300])  # 🔥 truncate spam
+            print(res.text[:200])  # shorter
 
         return res.status_code in (200, 204)
 
@@ -144,9 +147,13 @@ def send_logs(log_type: str, entries: List[dict]):
     if log_type == "access":
         for entry in entries:
             msg = build_access_text(entry)
+
             if not send_payload(url, {"content": msg}):
                 add_failed(entry)
                 write_fallback_log(entry)
+
+            time.sleep(0.05)  # ✅ throttle
+
         return True
 
     # ERROR routing
@@ -158,20 +165,20 @@ def send_logs(log_type: str, entries: List[dict]):
         if validate_webhook_url(error_url):
             success = send_payload(error_url, build_embed(log_type, entries))
 
-            if not success:
-                print("⚠️ ERROR webhook failed → fallback")
+            time.sleep(0.1)  # ✅ throttle
 
+            if not success:
                 if not send_payload(webhook_map["status"], build_embed(log_type, entries)):
                     for e in entries:
                         add_failed(e)
                         write_fallback_log(e)
 
-                return False
-
-            return True
+            return success
 
     # NORMAL
     success = send_payload(url, build_embed(log_type, entries))
+
+    time.sleep(0.1)  # ✅ throttle
 
     if not success:
         for e in entries:
@@ -185,8 +192,6 @@ def send_logs(log_type: str, entries: List[dict]):
 def retry_failed_logs():
     if not FAILED_LOGS:
         return
-
-    print(f"🔁 Retrying {len(FAILED_LOGS)} failed logs...")
 
     with FAILED_LOGS_LOCK:
         current_logs = FAILED_LOGS[:MAX_RETRY_PER_CYCLE]
@@ -207,10 +212,8 @@ def retry_failed_logs():
         if not success:
             retry_failed.append(entry)
 
-        delay = min(2, 0.2 + (0.02 * len(retry_failed)))
-        time.sleep(delay)
+        time.sleep(0.1)  # ✅ FIXED (was dynamic spike)
 
-    # rebuild queue safely
     with FAILED_LOGS_LOCK:
         FAILED_LOGS.clear()
         FAILED_LOGS.extend(remaining_logs)
@@ -226,14 +229,15 @@ def add_failed(entry):
 
 # ================= WORKER =================
 
-def log_worker(stop_event=None):
-    BATCH_INTERVAL = 5
+# ================= WORKER =================
 
+def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
             break
 
-        time.sleep(BATCH_INTERVAL)
+        interval = 3 if log_queue.qsize() > 100 else 5
+        time.sleep(interval)
 
         grouped = {}
 
@@ -244,21 +248,30 @@ def log_worker(stop_event=None):
             except Exception:
                 break
 
-        # 🔥 RETRY FIRST
         retry_failed_logs()
 
         if not grouped:
             continue
 
-        for log_type, entries in grouped.items():
+        for log_type in ["error", "status", "list", "access"]:
+            entries = grouped.get(log_type)
+            if not entries:
+                continue
+
             try:
-                send_logs(log_type, entries)
+                batch = entries[:20]
+                remaining = entries[20:]
+
+                send_logs(log_type, batch)
+
+                for e in remaining:
+                    log_queue.put(e)
+
             except Exception as e:
                 print("Batch send error:", e)
 
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
-
 
 # ================= MAIN LOG =================
 
@@ -284,3 +297,20 @@ def log_to_discord(message, log_type="status", severity="info", fields=None):
     except Exception as e:
         print("LOGGING FAILURE:", str(e))
         return False
+
+# ================= GLOBAL THROTTLE =================
+
+THROTTLE_LOCK = Lock()
+LAST_SEND = 0
+
+def global_throttle(min_interval=0.05):
+    global LAST_SEND
+
+    with THROTTLE_LOCK:
+        now = time.time()
+        diff = now - LAST_SEND
+
+        if diff < min_interval:
+            time.sleep(min_interval - diff)
+
+        LAST_SEND = time.time()
