@@ -213,7 +213,6 @@ def log_to_discord(
         if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
             return True
 
-
         entry = {
             "message": str(message),
             "severity": severity,
@@ -223,9 +222,10 @@ def log_to_discord(
 
         entry["fields"]["source"] = log_type
 
-    if log_queue.qsize() > 10000:
-    print("Queue overflow, dropping logs")
-    return True
+        # ✅ prevent memory overflow
+        if log_queue.qsize() > 10000:
+            print("Queue overflow, dropping logs")
+            return True
 
         # push to queue
         log_queue.put({**entry, "log_type": log_type})
