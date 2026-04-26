@@ -19,7 +19,7 @@ from config import (
 
 MAX_FIELDS = 25
 LAST_SEND_TIME = 0
-MIN_INTERVAL = 1.2
+MIN_INTERVAL = 2.5
 
 # 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
 LOG_LEVELS = {
@@ -188,25 +188,23 @@ def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
             break
+
         grouped = {}
 
         try:
-            # collect batch
             for _ in range(2):
                 entry = log_queue.get(timeout=1)
-
                 grouped.setdefault(entry["log_type"], []).append(entry)
-
         except Exception:
             pass
 
         if not grouped:
             continue
 
-        # send grouped logs safely
         for log_type, entries in grouped.items():
-    send_in_chunks(log_type, entries)
-    time.sleep(1.5)
+            try:
+                send_in_chunks(log_type, entries)
+                time.sleep(1.5)  # prevent burst
             except Exception as e:
                 print("Worker batch error:", e)
 
