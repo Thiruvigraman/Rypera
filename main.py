@@ -288,11 +288,7 @@ def handle_webhook():
                     fields={"error": str(e)}
                 )
 
-        threading.Thread(
-            target=safe_process,
-            args=(update,),
-            daemon=True
-        ).start()
+        EXECUTOR.submit(safe_process, update)
 
         return jsonify(success=True), 200
 
