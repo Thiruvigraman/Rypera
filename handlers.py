@@ -11,6 +11,9 @@ from database import (
     delete_movie,
     save_access_log
 )
+
+# ✅ FIX: import ALL needed webhook funcs
+import webhook
 from webhook import (
     log_to_discord,
     set_logging,
@@ -19,8 +22,8 @@ from webhook import (
     get_log_queue_size,
     set_freeze,
     is_frozen,
-    ADMIN_ALERT_CHAT_ID
 )
+
 from bot import send_message, send_file
 from commands.generate_link import handle_generate_link
 from commands.delete_movie import handle_delete_movie
@@ -158,7 +161,6 @@ def process_update(update):
                 safe_send(chat_id, "❌ Cancelled")
                 return
 
-
         # ================= MESSAGE =================
         if "message" not in update:
             return
@@ -169,11 +171,9 @@ def process_update(update):
         user_id = user["id"]
 
         # ✅ SET ADMIN ALERT TARGET
-        import webhook
         if is_admin(user_id):
             webhook.ADMIN_ALERT_CHAT_ID = chat_id
 
-        # FILE UPLOAD
         if "document" in msg and is_admin(user_id):
             handle_upload(chat_id, msg, user)
             return
