@@ -33,6 +33,9 @@ session = requests.Session()
 
 LOGGING_ENABLED = True
 FREEZE_LOGS = False
+FREEZE_UNTIL = 0
+FREEZE_DURATION = 3600
+ADMIN_ALERT_CHAT_ID = None
 
 def set_logging(enabled: bool):
     global LOGGING_ENABLED
@@ -47,12 +50,27 @@ def get_log_queue_size():
     return log_queue.qsize()
 
 
-def set_freeze(enabled: bool):
-    global FREEZE_LOGS
+def set_freeze(enabled: bool, duration: int = None):
+    global FREEZE_LOGS, FREEZE_UNTIL
+
     FREEZE_LOGS = enabled
+
+    if enabled:
+        FREEZE_UNTIL = time.time() + (duration or FREEZE_DURATION)
+    else:
+        FREEZE_UNTIL = 0
 
 def is_frozen():
     return FREEZE_LOGS
+
+def check_auto_unfreeze():
+    global FREEZE_LOGS
+
+    if FREEZE_LOGS and FREEZE_UNTIL > 0:
+        if time.time() >= FREEZE_UNTIL:
+            print("🔥 AUTO UNFREEZE TRIGGERED")
+            FREEZE_LOGS = False
+
 
 # ================= CONFIG =================
 
@@ -185,7 +203,20 @@ def send_payload(url, payload):
 
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
     print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
-    set_freeze(True)  # 🔥 AUTO FREEZE
+
+    set_freeze(True)
+
+    try:
+        from bot import send_message
+
+        if ADMIN_ALERT_CHAT_ID:
+            send_message(
+                ADMIN_ALERT_CHAT_ID,
+                "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
+            )
+    except Exception:
+        pass
+
     time.sleep(5)
     return False
 
@@ -293,6 +324,7 @@ def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
             break
+         check_auto_unfreeze()
 
         # 🧊 FREEZE MODE
         if FREEZE_LOGS:
