@@ -5,7 +5,6 @@ from bot import send_message
 from webhook import log_to_discord
 from config import BOT_USERNAME
 from utils import get_username
-username = get_username(user)
 
 
 def handle_generate_link(chat_id, text, user):
@@ -23,20 +22,16 @@ def handle_generate_link(chat_id, text, user):
     token = movies[movie_name].get("token")
 
     if not token:
-        return send_message(chat_id, "⚠️ No token found (old movie). Re-save movie.")
+        return send_message(chat_id, "⚠️ No token found")
 
     link = f"https://t.me/{BOT_USERNAME}?start={token}"
-
     send_message(chat_id, f"🔗 {link}")
 
+    username = get_username(user)
 
     log_to_discord(
-        message="🔗 Link Generated",
-        log_type="list",
-        severity="info",
-        fields={
-            "admin": username,
-            "movie": movie_name,
-            "link": link
-        }
+        "🔗 Link Generated",
+        "list",
+        "info",
+        fields={"admin": username, "movie": movie_name, "link": link}
     )
