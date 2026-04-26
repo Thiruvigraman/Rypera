@@ -148,8 +148,7 @@ def send_with_retry(url: str, payload: dict, log_type: str):
 # ================= CHUNKS =================
 
 def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
-    url = webhook_map.get(log_type)
-
+    url = webhook_map.get(log_type) or webhook_map.get("status")
     if not validate_webhook_url(url):
         logging.error(f"{log_type} webhook invalid or missing")
         for e in entries:
