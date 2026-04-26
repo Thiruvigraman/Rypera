@@ -165,7 +165,8 @@ def process_update(update):
             handle_upload(chat_id, msg, user)
             return
 
-        if is_rate_limited(user_id):
+        # ===== RATE LIMIT =====
+if is_rate_limited(user_id):
     return
 
         text = msg.get("text", "")
