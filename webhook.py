@@ -223,6 +223,10 @@ def log_to_discord(
 
         entry["fields"]["source"] = log_type
 
+    if log_queue.qsize() > 10000:
+    print("Queue overflow, dropping logs")
+    return True
+
         # push to queue
         log_queue.put({**entry, "log_type": log_type})
 
