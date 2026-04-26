@@ -10,7 +10,7 @@ import threading
 from flask import Flask, request, jsonify
 from utils import cleanup_pending_files
 from webhook import log_to_discord,log_worker
-from config import BOT_TOKEN, ADMIN_ID
+from config import BOT_TOKEN, ADMIN_IDS
 from handlers import process_update
 from globals import start_time,log_queue
 from database import is_db_available
