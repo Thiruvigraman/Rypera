@@ -218,16 +218,18 @@ def init_system():
     log_to_discord("🟢 Bot is online", "status", "info")
 
     from database import refresh_movie_cache
+from database import setup_log_ttl
     refresh_movie_cache() 
 
     set_webhook()
     startup_check()
     start_background_monitor()
     cleanup_pending_files()
-from database import setup_log_ttl
+    setup_log_ttl()
+    start_log_worker()
 
-setup_log_ttl()
-start_log_worker()
+
+
 
 threading.Thread(target=init_system, daemon=True).start()
 
