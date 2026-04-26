@@ -328,16 +328,21 @@ def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
         pass
 
 
+
 def get_pending_files(expiry_minutes=15):
     if not MONGO_AVAILABLE:
         return []
 
     try:
         cutoff = time.time() - (expiry_minutes * 60)
-        return list(sent_files_collection.find({"timestamp": {"$gte": cutoff}}))
+
+        
+        return list(
+            sent_files_collection.find({"timestamp": {"$lte": cutoff}})
+        )
+
     except Exception:
         return []
-
 
 def delete_sent_file_record(chat_id, file_message_id):
     if not MONGO_AVAILABLE:
