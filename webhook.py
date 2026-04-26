@@ -15,6 +15,7 @@ from config import (
 )
 from threading import Lock
 
+print("QUEUE SIZE:", log_queue.qsize())
 # ================= GLOBALS =================
 
 FAILED_LOGS_LOCK = Lock()
@@ -238,6 +239,8 @@ def add_failed(entry):
 
 # ================= WORKER =================
 
+# file: webhook.py
+
 def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
@@ -248,13 +251,15 @@ def log_worker(stop_event=None):
 
         grouped = {}
 
-        while not log_queue.empty():
+        # 🔥 SAFE DRAIN (no empty() race)
+        while True:
             try:
                 entry = log_queue.get_nowait()
                 grouped.setdefault(entry["log_type"], []).append(entry)
             except Exception:
                 break
 
+        # 🔁 Retry occasionally
         last_retry_time = getattr(log_worker, "_last_retry", 0)
         if time.time() - last_retry_time > 10:
             retry_failed_logs()
@@ -263,19 +268,18 @@ def log_worker(stop_event=None):
         if not grouped:
             continue
 
-        for log_type in ["error", "status", "list", "access"]:
-            entries = grouped.get(log_type)
-            if not entries:
-                continue
+        # 🔥 PROCESS ALL (no requeue)
+        for log_type, entries in grouped.items():
+            try:
+                # split into chunks of 5
+                for i in range(0, len(entries), 5):
+                    batch = entries[i:i+5]
+                    send_logs(log_type, batch)
 
-            batch = entries[:5]
-            remaining = entries[5:]
+            except Exception as e:
+                print("Batch send error:", e)
 
-            send_logs(log_type, batch)
-
-            for e in remaining[:10]:
-                log_queue.put(e)
-
+        # mark all done
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
 
