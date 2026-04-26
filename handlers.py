@@ -25,6 +25,7 @@ from commands.upload_movie import handle_upload
 
 import time
 import requests
+import threading
 
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
@@ -42,6 +43,23 @@ def get_user_name(user):
         return f"@{user['username']}"
     return user.get("first_name", "User")
 
+
+def log_access_async(user, user_id, movie_name):
+    try:
+        username = get_user_name(user)
+
+        log_to_discord(
+            "🎬 File accessed",
+            "access",
+            "info",
+            fields={
+                "user": username,
+                "user_id": user_id,
+                "movie": movie_name
+            }
+        )
+    except:
+        pass
 
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
