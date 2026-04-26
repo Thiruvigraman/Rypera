@@ -62,7 +62,7 @@ def send_message(chat_id, text, parse_mode=None):
         payload['parse_mode'] = parse_mode
 
     try:
-        res = requests.post(url, json=payload, timeout=10)
+        res = session.post(url, json=payload, timeout=10)
         data = res.json()
 
         if not data.get("ok"):
@@ -99,7 +99,7 @@ def forward_file_to_storage(file_id):
     payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
 
     try:
-        res = requests.post(url, json=payload, timeout=10)
+        res = session.post(url, json=payload, timeout=10)
         data = res.json()
 
         if data.get('ok'):
@@ -139,7 +139,7 @@ def send_file(chat_id, file_id):
     }
 
     try:
-        res = requests.post(url, json=payload, timeout=10)
+        res = session.post(url, json=payload, timeout=10)
         data = res.json()
 
         if not data.get('ok'):
@@ -197,7 +197,7 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
             continue
 
         try:
-            requests.post(
+            session.post(
                 url,
                 json={'chat_id': chat_id, 'message_id': msg_id},
                 timeout=10
