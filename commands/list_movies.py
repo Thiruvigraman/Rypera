@@ -5,7 +5,9 @@ from webhook import log_to_discord
 import requests
 from config import BOT_TOKEN
 from utils import get_username
-username = get_username(user)
+
+def handle_list_movies(chat_id, user):
+    username = get_username(user)
 
 PER_PAGE = 10
 
