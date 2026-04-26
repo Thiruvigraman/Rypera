@@ -220,11 +220,10 @@ def log_to_discord(
     severity="info",
     fields: Optional[Dict[str, str]] = None,
     force_flush: bool = False,
-):
+) -> bool:
     try:
-        # 🔥 LOG LEVEL FILTER
         if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
-            return
+            return True
 
         if log_type not in log_buffers:
             log_type = "status"
@@ -236,28 +235,28 @@ def log_to_discord(
             "timestamp": datetime.utcnow().isoformat(),
         }
 
-        # add source context
         entry["fields"]["source"] = log_type
 
-        # 🔥 ERROR = instant send
         if severity == "error":
-            send_in_chunks(log_type, [entry])
-            return
+            return send_in_chunks(log_type, [entry])
 
         log_buffers[log_type].append(entry)
 
         now = time.time()
 
         if len(log_buffers[log_type]) >= BATCH_SIZE:
-            flush(log_type)
-            return
+            return flush(log_type)
 
         if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
-            flush(log_type)
-            return
+            return flush(log_type)
 
         if force_flush:
-            flush(log_type)
+            return flush(log_type)
+
+        return True
+
+    except Exception:
+        return False
 
     except Exception as e:
         print("LOGGING FAILURE:", str(e))
