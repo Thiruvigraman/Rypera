@@ -4,6 +4,8 @@ from database import load_movies
 from bot import send_message
 from webhook import log_to_discord
 from config import BOT_USERNAME
+from utils import get_username
+username = get_username(user)
 
 
 def handle_generate_link(chat_id, text, user):
@@ -27,7 +29,6 @@ def handle_generate_link(chat_id, text, user):
 
     send_message(chat_id, f"🔗 {link}")
 
-    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
     log_to_discord(
         message="🔗 Link Generated",
