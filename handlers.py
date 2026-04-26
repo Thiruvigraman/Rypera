@@ -225,6 +225,16 @@ def process_update(update):
                 username = get_user_name(user)
 
                 save_access_log(user_id, movie["name"])
+               log_to_discord(
+    "🎬 File Accessed",
+    "access",
+    "info",
+    fields={
+        "User": get_user_name(user),
+        "User ID": user_id,
+        "Movie": movie["name"] if "movie" in locals() else name
+    }
+)
                 return
 
             # fallback
@@ -238,6 +248,16 @@ def process_update(update):
                 username = get_user_name(user)
 
                 save_access_log(user_id, name)
+               log_to_discord(
+    "🎬 File Accessed",
+    "access",
+    "info",
+    fields={
+        "User": get_user_name(user),
+        "User ID": user_id,
+        "Movie": movie["name"] if "movie" in locals() else name
+    }
+)
                 return
 
             safe_send(chat_id, "❌ Invalid or expired link")
