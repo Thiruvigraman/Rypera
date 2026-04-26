@@ -7,7 +7,8 @@ from bot import send_message
 from webhook import log_to_discord
 from globals import start_time
 from database import get_db_size_mb
-
+from utils import get_username
+username = get_username(user)
 
 def handle_health(chat_id, user):
     process = psutil.Process()
@@ -34,7 +35,6 @@ def handle_health(chat_id, user):
 
     send_message(chat_id, msg)
 
-    username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
     log_to_discord(
         message="🟢 Health Checked",
