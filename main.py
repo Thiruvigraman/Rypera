@@ -176,6 +176,36 @@ def start_background_monitor():
     threading.Thread(target=monitor_mongo, daemon=True).start()
 
 
+
+def log_worker():
+    while True:
+        try:
+            logs = get_unsent_logs(10)
+
+            for log in logs:
+                log_to_discord(
+                    "🎬 File accessed",
+                    "access",
+                    "info",
+                    fields={
+                        "user_id": log["user_id"],
+                        "movie": log["movie"]
+                    }
+                )
+
+                mark_log_sent(log["_id"])
+
+                time.sleep(0.7)  # prevent rate limit
+
+        except Exception:
+            pass
+
+        time.sleep(2)
+
+
+def start_log_worker():
+    threading.Thread(target=log_worker, daemon=True).start()
+
 # ================= 🔥 INSTANT STARTUP =================
 def init_system():
     global initialized
