@@ -107,7 +107,7 @@ def forward_file_to_storage(file_id):
             return data['result']['message_id']
 
     except Exception as e:
-        log_to_discord("Storage error", "access", "error")
+        log_to_discord("Storage error", "status", "error")
 
     return None
 
