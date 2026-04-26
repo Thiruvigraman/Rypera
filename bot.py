@@ -232,13 +232,30 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
             ).json()
 
             if not res.get("ok"):
-                print("DELETE FAILED:", res)
+                log_to_discord(
+                    "Delete failed",
+                    "status",
+                    "warning",
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": msg_id,
+                        "response": str(res)
+                    }
+                )
 
         except Exception as e:
-            print("DELETE ERROR:", e)
+            log_to_discord(
+                "Delete exception",
+                "status",
+                "error",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": msg_id,
+                    "error": str(e)
+                }
+            )
 
     delete_sent_file_record(chat_id, file_message_id)
-
     
 
 
