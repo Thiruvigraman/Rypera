@@ -130,6 +130,20 @@ def build_embed(log_type: str, entries: List[dict]):
     }
 
 
+# ================= CLEAR LOG QUEUE =================
+
+def clear_log_queue():
+    cleared = 0
+
+    while not log_queue.empty():
+        try:
+            log_queue.get_nowait()
+            cleared += 1
+        except Exception:
+            break
+
+    return cleared
+
 # ================= SEND =================
 
 def send_payload(url, payload):
