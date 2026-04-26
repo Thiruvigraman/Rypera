@@ -225,16 +225,7 @@ def process_update(update):
 
                 username = get_user_name(user)
 
-                log_to_discord(
-                    "🎬 File accessed",
-                    "access",
-                    "info",
-                    fields={
-                        "user": username,
-                        "user_id": user_id,
-                        "movie": movie["name"]
-                    }
-                )
+                save_access_log(user_id, movie["name"])
                 return
 
             # fallback
