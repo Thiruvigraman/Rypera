@@ -178,7 +178,7 @@ def start_background_monitor():
 
 
 
-def log_worker():
+start_log_worker()
     while True:
         try:
             logs = get_unsent_logs(10)
