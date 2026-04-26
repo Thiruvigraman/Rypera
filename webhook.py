@@ -190,6 +190,8 @@ def log_worker():
 
             send_in_chunks(entry["log_type"], [entry])
 
+            log_queue.task_done()  
+
         except Exception as e:
             print("Worker error:", e)
 
