@@ -233,6 +233,10 @@ def log_to_discord(
         entry["fields"]["source"] = log_type
 
         if log_queue.qsize() > 10000:
+    try:
+        log_queue.get_nowait()  # drop oldest
+    except:
+        pass
             print("Queue overflow, dropping logs")
             return True
 
