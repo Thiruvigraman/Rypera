@@ -11,8 +11,6 @@ from database import (
     delete_movie
 )
 from bot import send_message, send_file
-from webhook import log_to_discord
-
 from commands.generate_link import handle_generate_link
 from commands.delete_movie import handle_delete_movie
 from commands.rename_file import handle_rename
