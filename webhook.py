@@ -182,10 +182,6 @@ def send_payload(url, payload):
     try:
         global_throttle()
 
-        # ✅ DEBUG (correct place)
-        print("➡️ Sending to:", url)
-        print("➡️ Payload:", payload)
-
         res = session.post(
             url,
             json=payload,
@@ -201,24 +197,24 @@ def send_payload(url, payload):
             except Exception:
                 return {}
 
+        # ✅ FIXED INDENTATION
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
-    print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
+            print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
 
-    set_freeze(True)
+            set_freeze(True)
 
-    try:
-        from bot import send_message
+            try:
+                from bot import send_message
+                if ADMIN_ALERT_CHAT_ID:
+                    send_message(
+                        ADMIN_ALERT_CHAT_ID,
+                        "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
+                    )
+            except Exception:
+                pass
 
-        if ADMIN_ALERT_CHAT_ID:
-            send_message(
-                ADMIN_ALERT_CHAT_ID,
-                "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
-            )
-    except Exception:
-        pass
-
-    time.sleep(5)
-    return False
+            time.sleep(5)
+            return False
 
         if res.status_code == 429:
             retry_after = safe_json().get("retry_after", 2)
@@ -324,9 +320,10 @@ def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
             break
-         check_auto_unfreeze()
 
-        # 🧊 FREEZE MODE
+        # ✅ FIX INDENT
+        check_auto_unfreeze()
+
         if FREEZE_LOGS:
             time.sleep(5)
             continue
