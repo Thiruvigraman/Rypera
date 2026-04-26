@@ -15,7 +15,6 @@ from config import (
 )
 from threading import Lock
 
-print("QUEUE SIZE:", log_queue.qsize())
 # ================= GLOBALS =================
 
 FAILED_LOGS_LOCK = Lock()
@@ -30,6 +29,22 @@ MAX_FIELDS = 10
 LAST_SEND = 0
 
 session = requests.Session()
+
+# ================= GLOBAL LOG SWITCH =================
+
+LOGGING_ENABLED = True
+
+def set_logging(enabled: bool):
+    global LOGGING_ENABLED
+    LOGGING_ENABLED = enabled
+
+
+def is_logging_enabled():
+    return LOGGING_ENABLED
+
+
+def get_log_queue_size():
+    return log_queue.qsize()
 
 # ================= CONFIG =================
 
