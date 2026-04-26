@@ -104,9 +104,18 @@ def edit_message(chat_id, message_id, text, reply_markup=None):
         payload["reply_markup"] = reply_markup
 
     try:
-        session.post(url, json=payload, timeout=10)
-    except Exception:
-        pass
+        res = session.post(url, json=payload, timeout=10)
+        data = res.json()
+
+        if not data.get("ok"):
+            # ignore harmless error
+            if "message is not modified" in data.get("description", ""):
+                return
+
+            print("EDIT FAILED:", data)
+
+    except Exception as e:
+        print("EDIT ERROR:", str(e))
 
 # ================= STORAGE =================
 def forward_file_to_storage(file_id):
