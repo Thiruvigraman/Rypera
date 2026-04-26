@@ -24,7 +24,7 @@ import time
 import requests
 import threading
 from database import save_access_log
-from webhook import log_to_discord
+from webhook import log_to_discord,set_logging, is_logging_enabled, get_log_queue_size
 from rate_limiter import is_rate_limited
 
 PROCESSED_UPDATES = set()
@@ -216,6 +216,26 @@ def process_update(update):
         if text == "/list_movies" and is_admin(user_id):
             handle_list_movies(chat_id, user)
             return
+
+if text == "/pause_logs" and is_admin(user_id):
+    set_logging(False)
+    send_message(chat_id, "🛑 Logging paused")
+    return
+
+if text == "/resume_logs" and is_admin(user_id):
+    set_logging(True)
+    send_message(chat_id, "✅ Logging resumed")
+    return
+
+if text == "/log_status" and is_admin(user_id):
+    status = "ON" if is_logging_enabled() else "OFF"
+    queue_size = get_log_queue_size()
+
+    send_message(
+        chat_id,
+        f"📊 Logging Status: {status}\n📦 Queue Size: {queue_size}"
+    )
+    return
 
 # ================= START =================
         if text.startswith("/start "):
