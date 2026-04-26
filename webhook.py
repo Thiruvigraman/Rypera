@@ -183,30 +183,32 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
 
 # ========== LOG WORKER==========
 
-def log_worker():
-    while True:
-        batch = []
+def log_worker(stop_event):
+    while not stop_event.is_set():
+        grouped = {}
 
         try:
-            while len(batch) < 5:
+            # collect batch
+            for _ in range(5):
                 entry = log_queue.get(timeout=1)
-                batch.append(entry)
+
+                grouped.setdefault(entry["log_type"], []).append(entry)
+
         except:
             pass
 
-        if not batch:
+        if not grouped:
             continue
 
-        try:
-            send_in_chunks(batch[0]["log_type"], batch)
-        except Exception as e:
-            print("Worker batch error:", e)
+        # send grouped logs safely
+        for log_type, entries in grouped.items():
+            try:
+                send_in_chunks(log_type, entries)
+            except Exception as e:
+                print("Worker batch error:", e)
 
-        for _ in batch:
+        for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
-
-threading.Thread(target=log_worker, daemon=True).start()
-
 
 # ================= MAIN LOG =================
 
