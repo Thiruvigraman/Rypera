@@ -58,6 +58,15 @@ def cleanup_pending_files():
 def generate_token(length=10):
     return secrets.token_urlsafe(length)
 
+# =========================
+# CENTRALIZE USERNAME
+# =========================
+
+def get_username(user):
+    if user.get("username"):
+        return f"@{user['username']}"
+    return user.get("first_name", "Admin")
+
 
 # =========================
 # STRUCTURED LOGGING SYSTEM
