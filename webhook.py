@@ -17,7 +17,7 @@ from config import (
 from threading import Lock
 
 FAILED_LOGS_LOCK = Lock()
-MAX_FIELDS = 25
+MAX_FIELDS = 10
 FAILED_LOGS: List[dict] = []
 MAX_FAILED_LOGS = 5000
 MAX_RETRY_PER_CYCLE = 100
@@ -105,7 +105,14 @@ def build_embed(log_type: str, entries: List[dict]):
 
 def send_payload(url, payload):
     try:
-        res = session.post(url, json=payload, timeout=5)
+        res = session.post(
+            url,
+            json=payload,
+            timeout=5,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; DiscordBot/1.0)"
+            }
+        )
 
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", 1)
@@ -113,7 +120,8 @@ def send_payload(url, payload):
             return False
 
         if res.status_code >= 400:
-            print("DISCORD ERROR:", res.status_code, res.text)
+            print("DISCORD ERROR:", res.status_code)
+            print(res.text[:300])  # 🔥 truncate spam
 
         return res.status_code in (200, 204)
 
