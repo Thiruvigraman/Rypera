@@ -21,7 +21,7 @@ from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 from commands.upload_movie import handle_upload
-from webhook import log_to_discord, set_logging, is_logging_enabled, get_log_queue_size
+from webhook import log_to_discord, set_logging, is_logging_enabled,clear_all_logs, get_log_queue_size
 from rate_limiter import is_rate_limited
 
 import time
@@ -227,6 +227,18 @@ def process_update(update):
             queue_size = get_log_queue_size()
             send_message(chat_id, f"📊 Logging: {status}\n📦 Queue: {queue_size}")
             return
+
+
+        if text == "/clear_logs" and is_admin(user_id):
+    cleared_queue, failed_count = clear_all_logs()
+
+    send_message(
+        chat_id,
+        f"🧹 Logs cleared\n"
+        f"📦 Queue: {cleared_queue}\n"
+        f"⚠️ Failed: {failed_count}"
+    )
+    return
 
         # ================= START =================
         if text.startswith("/start "):
