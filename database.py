@@ -163,7 +163,11 @@ def delete_movie(name):
 
     try:
         movies_collection.delete_one({"name": name})
-        refresh_movie_cache()  # ✅ inside try
+
+if REDIS_AVAILABLE:
+    cache = get_cache("movies:all") or {}
+    cache.pop(name, None)
+    set_cache("movies:all", cache, ttl=60)
     except Exception:
         pass
 
@@ -186,12 +190,45 @@ def rename_movie(old_name, new_name):
             "access_count": movie.get("access_count", 0)
         })
 
-        refresh_movie_cache()  # ✅ inside try
+        
+if REDIS_AVAILABLE:
+    cache = get_cache("movies:all") or {}
+    data = cache.pop(old_name, None)
+    if data:
+        cache[new_name] = data
+        set_cache("movies:all", cache, ttl=60)
+
 
         return True
 
     except Exception:
         return False
+
+def load_movies_cached():
+    if not MONGO_AVAILABLE:
+        return {}
+
+    # try redis first
+    cached = get_cache("movies:all")
+    if cached:
+        return cached
+
+    try:
+        data = {
+            doc['name']: {
+                "file_id": doc['file_id'],
+                "token": doc.get("token")
+            }
+            for doc in movies_collection.find(
+                {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
+            )
+        }
+
+        set_cache("movies:all", data, ttl=60)
+        return data
+
+    except Exception:
+        return {}
 
 
 # ================= ACCESS =================
