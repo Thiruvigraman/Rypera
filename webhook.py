@@ -306,10 +306,12 @@ def log_worker(stop_event=None):
 
 # ================= MAIN =================
 
-# file: webhook.py
-
 def log_to_discord(message, log_type="status", severity="info", fields=None, force_flush=False):
     try:
+        # 🚫 HARD STOP
+        if not LOGGING_ENABLED:
+            return False
+
         entry = {
             "message": str(message),
             "severity": severity,
@@ -318,13 +320,10 @@ def log_to_discord(message, log_type="status", severity="info", fields=None, for
             "log_type": log_type,
         }
 
-        # 🚀 INSTANT SEND (FIX)
         if force_flush:
-            print("FORCE LOG:", message)
             send_logs(log_type, [entry])
             return True
 
-        # queue fallback
         if log_queue.qsize() > 10000:
             try:
                 log_queue.get_nowait()
