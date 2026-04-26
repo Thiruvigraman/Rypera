@@ -230,12 +230,8 @@ def load_movies_cached():
     if not MONGO_AVAILABLE:
         return {}
 
-    cached = get_cache("movies:all")
-    if cached:
-        return cached
-
     try:
-        data = {
+        return {
             doc['name']: {
                 "file_id": doc['file_id'],
                 "token": doc.get("token")
@@ -244,12 +240,6 @@ def load_movies_cached():
                 {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
             )
         }
-
-        if REDIS_AVAILABLE:
-            set_cache("movies:all", data, ttl=60)
-
-        return data
-
     except Exception:
         return {}
 
