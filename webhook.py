@@ -16,6 +16,7 @@ from config import (
 )
 
 MAX_FIELDS = 25
+FAILED_LOGS: List[dict] = []
 session = requests.Session()
 
 # ================= CONFIG =================
@@ -89,7 +90,9 @@ def send_payload(url, payload):
     try:
         res = session.post(url, json=payload, timeout=5)
         print("DISCORD:", res.status_code, res.text)
+
         return res.status_code in (200, 204)
+
     except Exception as e:
         print("SEND ERROR:", str(e))
         return False
@@ -101,16 +104,19 @@ def send_logs(log_type: str, entries: List[dict]):
     url = webhook_map.get(log_type) or webhook_map["status"]
 
     if not validate_webhook_url(url):
+        FAILED_LOGS.extend(entries)
         return False
 
-    # 🔥 ACCESS → plain messages
+    # ACCESS
     if log_type == "access":
         for entry in entries:
             msg = build_access_text(entry)
-            send_payload(url, {"content": msg})
+            if not send_payload(url, {"content": msg}):
+                FAILED_LOGS.append(entry)
+                write_fallback_log(entry)
         return True
 
-    # 🔥 ERROR → try error webhook first
+    # ERROR routing
     is_error = any(e["severity"] == "error" for e in entries)
 
     if is_error:
@@ -119,20 +125,50 @@ def send_logs(log_type: str, entries: List[dict]):
         if validate_webhook_url(error_url):
             success = send_payload(error_url, build_embed(log_type, entries))
 
-            # ✅ fallback → status webhook
             if not success:
-                print("⚠️ ERROR webhook failed → fallback to STATUS")
-                return send_payload(
-                    webhook_map["status"],
-                    build_embed(log_type, entries)
-                )
+                print("⚠️ ERROR webhook failed → fallback")
+                if not send_payload(webhook_map["status"], build_embed(log_type, entries)):
+                    FAILED_LOGS.extend(entries)
+                    for e in entries:
+                        write_fallback_log(e)
+                return False
 
             return True
 
-    # normal flow
-    payload = build_embed(log_type, entries)
-    return send_payload(url, payload)
+    # NORMAL
+    success = send_payload(url, build_embed(log_type, entries))
 
+    if not success:
+        FAILED_LOGS.extend(entries)
+        for e in entries:
+            write_fallback_log(e)
+
+    return success
+# ================= RETRY =================
+
+def retry_failed_logs():
+    if not FAILED_LOGS:
+        return
+
+    print(f"🔁 Retrying {len(FAILED_LOGS)} failed logs...")
+
+    remaining = []
+
+    for entry in FAILED_LOGS:
+        log_type = entry.get("log_type", "status")
+        url = webhook_map.get(log_type) or webhook_map["status"]
+
+        if log_type == "access":
+            msg = build_access_text(entry)
+            success = send_payload(url, {"content": msg})
+        else:
+            success = send_payload(url, build_embed(log_type, [entry]))
+
+        if not success:
+            remaining.append(entry)
+
+    FAILED_LOGS.clear()
+    FAILED_LOGS.extend(remaining)
 
 # ================= WORKER =================
 
@@ -154,6 +190,9 @@ def log_worker(stop_event=None):
             except Exception:
                 break
 
+        # 🔥 RETRY FIRST
+        retry_failed_logs()
+
         if not grouped:
             continue
 
@@ -165,7 +204,6 @@ def log_worker(stop_event=None):
 
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
-
 
 # ================= MAIN LOG =================
 
