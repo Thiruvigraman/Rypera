@@ -329,20 +329,3 @@ def send_announcement(user_ids, message, parse_mode=None):
 
     return success, failed
 
-# ================= CLEANUP =================
-def cleanup_pending_files():
-    try:
-        pending_files = get_pending_files()
-
-        for f in pending_files:
-            if not f.get("chat_id"):
-                continue
-
-            delete_user_messages(
-                f['chat_id'],
-                f.get('file_message_id'),
-                f.get('warning_message_id')
-            )
-
-    except Exception as e:
-        log_to_discord("Cleanup error", "status", "error")
