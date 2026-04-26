@@ -1,7 +1,5 @@
 # file: webhook.py
 
-
-
 import os
 import requests
 import logging
@@ -14,30 +12,20 @@ from config import (
     DISCORD_WEBHOOK_STATUS,
     DISCORD_WEBHOOK_LIST_LOGS,
     DISCORD_WEBHOOK_FILE_ACCESS,
+    DISCORD_WEBHOOK_ERRORS,
 )
 
-
 MAX_FIELDS = 25
-LAST_SEND_TIME = 0
+session = requests.Session()
 
+# ================= CONFIG =================
 
-# 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
-LOG_LEVELS = {
-    "info": 1,
-    "warning": 2,
-    "error": 3,
+webhook_map = {
+    "status": DISCORD_WEBHOOK_STATUS,
+    "list": DISCORD_WEBHOOK_LIST_LOGS,
+    "access": DISCORD_WEBHOOK_FILE_ACCESS,
+    "error": DISCORD_WEBHOOK_ERRORS,
 }
-
-
-LOG_LEVEL_MAP = {
-    "DEBUG": 0,
-    "INFO": 1,
-    "WARNING": 2,
-    "ERROR": 3
-}
-
-env_level = os.getenv("LOG_LEVEL", "INFO").upper()
-CURRENT_LOG_LEVEL = LOG_LEVEL_MAP.get(env_level, 1)
 
 COLORS = {
     "info": 0x2ECC71,
@@ -45,54 +33,39 @@ COLORS = {
     "error": 0xE74C3C,
 }
 
-
-webhook_map = {
-    "status": DISCORD_WEBHOOK_STATUS,
-    "list": DISCORD_WEBHOOK_LIST_LOGS,
-    "access": DISCORD_WEBHOOK_FILE_ACCESS,
-}
-
-session = requests.Session()
-
-# ================= FALLBACK =================
-
-def write_fallback_log(entry):
-    try:
-        with open("failed_logs.txt", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
-
-
 # ================= SAFETY =================
 
 def validate_webhook_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
 
+# ================= ACCESS FORMAT =================
+
+def build_access_text(entry):
+    f = entry.get("fields", {})
+
+    return (
+        "📥 **ACCESS LOGS**\n\n"
+        f">>> **File Accessed**\n\n"
+        f"👤 User: {f.get('User')}\n"
+        f"🆔 User ID: {f.get('User ID')}\n"
+        f"🎬 Movie: {f.get('Movie')}"
+    )
+
+
 # ================= EMBED =================
-
-MAX_VALUE_LENGTH = 900
-
-def safe_truncate(text):
-    return text[:MAX_VALUE_LENGTH] + "..." if len(text) > MAX_VALUE_LENGTH else text
-
 
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
     for entry in entries:
-        try:
-            raw = "\n".join(
-                [f"{k}: {v}" for k, v in entry.get("fields", {}).items()]
-            )
-            value = safe_truncate(raw)
-        except Exception:
-            value = "Invalid field data"
+        value = "\n".join(
+            [f"**{k}**: {v}" for k, v in entry.get("fields", {}).items()]
+        )
 
         fields.append({
-            "name": safe_truncate(entry.get("message", "Log"))[:256],
-            "value": value or "—",
+            "name": entry.get("message", "Log")[:256],
+            "value": value[:1000] or "—",
             "inline": False,
         })
 
@@ -109,76 +82,46 @@ def build_embed(log_type: str, entries: List[dict]):
         ]
     }
 
+
 # ================= SEND =================
 
-LAST_SEND_TIME = 0
-
-
-
-def send_with_retry(url: str, payload: dict, log_type: str):
-    delays = [3, 6, 10]
-
-    for attempt in range(len(delays)):
-        try:
-            res = session.post(url, json=payload, timeout=5)
-
-            print("DISCORD:", res.status_code, res.text)  # MUST be inside try
-
-            if res.status_code in (200, 204):
-                return True
-
-            if res.status_code == 429:
-                time.sleep(10)
-                continue
-
-        except Exception as e:
-            print("SEND ERROR:", str(e))
-
-        time.sleep(delays[attempt])
-
-    logging.error(f"{log_type} send failed permanently")
-    return False
-
-# ================= CHUNKS =================
-
-def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
-    url = webhook_map.get(log_type) or webhook_map.get("status")
-    if not validate_webhook_url(url):
-        logging.error(f"{log_type} webhook invalid or missing")
-        for e in entries:
-            write_fallback_log(e)
+def send_payload(url, payload):
+    try:
+        res = session.post(url, json=payload, timeout=5)
+        print("DISCORD:", res.status_code, res.text)
+        return res.status_code in (200, 204)
+    except Exception as e:
+        print("SEND ERROR:", str(e))
         return False
 
-    success_all = True
 
-    for i in range(0, len(entries), MAX_FIELDS):
-        chunk = entries[i:i + MAX_FIELDS]
+# ================= MAIN SENDER =================
 
-        try:
-            payload = build_embed(log_type, chunk)
-            success = send_with_retry(url, payload, log_type)
+def send_logs(log_type: str, entries: List[dict]):
+    url = webhook_map.get(log_type) or webhook_map["status"]
 
-            if not success:
-                success_all = False
-                for e in chunk:
-                    write_fallback_log(e)
+    if not validate_webhook_url(url):
+        return False
 
-        except Exception as e:
-            success_all = False
-            logging.error(f"{log_type} chunk failed: {e}")
+    # 🔥 ACCESS → plain messages (NO EMBED)
+    if log_type == "access":
+        for entry in entries:
+            msg = build_access_text(entry)
+            send_payload(url, {"content": msg})
+        return True
 
-            for e in chunk:
-                write_fallback_log(e)
+    # 🔥 ERROR → redirect
+    if any(e["severity"] == "error" for e in entries):
+        url = webhook_map.get("error") or url
 
-    return success_all
-
-
+    payload = build_embed(log_type, entries)
+    return send_payload(url, payload)
 
 
-# ========== LOG WORKER==========
+# ================= WORKER =================
 
 def log_worker(stop_event=None):
-    BATCH_INTERVAL = 10  # seconds
+    BATCH_INTERVAL = 10
 
     while True:
         if stop_event and stop_event.is_set():
@@ -188,7 +131,6 @@ def log_worker(stop_event=None):
 
         grouped = {}
 
-        # collect everything available (non-blocking)
         while not log_queue.empty():
             try:
                 entry = log_queue.get_nowait()
@@ -201,13 +143,13 @@ def log_worker(stop_event=None):
 
         for log_type, entries in grouped.items():
             try:
-                send_in_chunks(log_type, entries)
+                send_logs(log_type, entries)
             except Exception as e:
                 print("Batch send error:", e)
 
-        # mark all done
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
+
 
 # ================= MAIN LOG =================
 
@@ -216,28 +158,20 @@ def log_to_discord(
     log_type="status",
     severity="info",
     fields: Optional[Dict[str, str]] = None,
-    force_flush: bool = False,
 ) -> bool:
     try:
-        if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
-            return True
-
         entry = {
             "message": str(message),
             "severity": severity,
             "fields": fields or {},
             "timestamp": datetime.utcnow().isoformat(),
+            "log_type": log_type,
         }
 
-        entry["fields"]["source"] = log_type
-
         if log_queue.qsize() > 10000:
-            try:
-                log_queue.get_nowait()
-            except Exception:
-                pass
+            return False
 
-        log_queue.put({**entry, "log_type": log_type})
+        log_queue.put(entry)
         return True
 
     except Exception as e:
