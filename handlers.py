@@ -78,15 +78,17 @@ def process_update(update):
     timeout=5
 )
 
-            if data and data.startswith("list_"):
+if data and data.startswith("list_"):
     try:
         page = int(data.split("_")[1])
         message_id = query["message"]["message_id"]
 
         send_page(chat_id, page, message_id)
-                except Exception as e:
-                    log_to_discord("Pagination error", "status", "error", fields={"error": str(e)})
-                return
+
+    except Exception as e:
+        log_to_discord("Pagination error", "status", "error", fields={"error": str(e)})
+
+    return
 
             # ===== ANNOUNCE CONFIRM =====
             if data == "announce_confirm" and is_admin(user_id):
