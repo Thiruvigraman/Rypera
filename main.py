@@ -184,21 +184,15 @@ def log_worker():
             logs = get_unsent_logs(10)
 
             for log in logs:
-                success = False
-
-                try:
-                    log_to_discord(
-                        "🎬 File accessed",
-                        "access",
-                        "info",
-                        fields={
-                            "user_id": log["user_id"],
-                            "movie": log["movie"]
-                        }
-                    )
-                    success = True
-                except:
-                    success = False
+                success = log_to_discord(
+                    "🎬 File accessed",
+                    "access",
+                    "info",
+                    fields={
+                        "user_id": log["user_id"],
+                        "movie": log["movie"]
+                    }
+                )
 
                 if success:
                     mark_log_sent(log["_id"])
@@ -209,7 +203,6 @@ def log_worker():
             pass
 
         time.sleep(2)
-
 
 def start_log_worker():
     threading.Thread(target=log_worker, daemon=True).start()
