@@ -4,10 +4,8 @@ import requests
 from bot import send_message
 from config import BOT_TOKEN
 from webhook import log_to_discord
-
-
-def get_username(user):
-    return f"@{user.get('username')}" if user.get("username") else user.get("first_name", "Admin")
+from utils import get_username
+username = get_username(user)
 
 
 def handle_announcement(chat_id, text, user_id, pending_announcement, user):
