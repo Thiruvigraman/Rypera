@@ -151,20 +151,30 @@ def send_file(chat_id, file_id):
             )
             return data
 
-        file_message_id = data['result']['message_id']
+       
 
-        warning_text = (
-            "⚠️ IMPORTANT\n\n"
-            "⏳ This file will be deleted in 15 minutes.\n\n"
-            "📌 Forward it to another chat to keep it permanently."
-        )
+file_message_id = data['result']['message_id']
 
-        warning_response = send_message(chat_id, warning_text)
-        warning_message_id = warning_response.get('result', {}).get('message_id')
+warning_text = (
+    "⚠️ IMPORTANT\n\n"
+    "⏳ This file will be deleted in 15 minutes.\n\n"
+    "📌 Forward it to another chat to keep it permanently."
+)
 
-        if warning_message_id:
-            save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
+# retry send warning
+warning_message_id = None
 
+for _ in range(3):
+    warning_response = send_message(chat_id, warning_text)
+
+    if warning_response and warning_response.get("ok"):
+        warning_message_id = warning_response['result']['message_id']
+        break
+
+    time.sleep(0.5)
+
+
+save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
             
 
         
