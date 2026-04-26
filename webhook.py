@@ -112,15 +112,15 @@ def build_embed(log_type: str, entries: List[dict]):
 
 # ================= SEND =================
 
-global LAST_SEND_TIME
-
-now = time.time()
-if now - LAST_SEND_TIME < MIN_INTERVAL:
-    return False
-
-LAST_SEND_TIME = now
-
 def send_with_retry(url: str, payload: dict, log_type: str):
+    global LAST_SEND_TIME
+
+    now = time.time()
+    if now - LAST_SEND_TIME < MIN_INTERVAL:
+        time.sleep(MIN_INTERVAL)
+
+    LAST_SEND_TIME = time.time()
+
     delays = [1, 2, 4]
 
     for attempt in range(len(delays)):
