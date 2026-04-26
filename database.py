@@ -296,54 +296,6 @@ def delete_sent_file_record(chat_id, file_message_id):
         pass
 
 
-# ================= CACHE =================
-
-MOVIE_CACHE = {}
-LAST_CACHE_TIME = 0
-CACHE_TTL = 60  # seconds
-
-
-def load_movies_cached():
-    global MOVIE_CACHE, LAST_CACHE_TIME
-
-    if not MONGO_AVAILABLE:
-        return {}
-
-    now = time.time()
-
-    if now - LAST_CACHE_TIME > CACHE_TTL:
-        try:
-            MOVIE_CACHE = {
-                doc['name']: {
-                    "file_id": doc['file_id'],
-                    "token": doc.get("token")
-                }
-                for doc in movies_collection.find(
-                    {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
-                )
-            }
-            LAST_CACHE_TIME = now
-        except Exception:
-            return {}
-
-    return MOVIE_CACHE
-
-def refresh_movie_cache():
-    global MOVIE_CACHE, LAST_CACHE_TIME
-
-    try:
-        MOVIE_CACHE = {
-            doc['name']: {
-                "file_id": doc['file_id'],
-                "token": doc.get("token")
-            }
-            for doc in movies_collection.find(
-                {}, {"name": 1, "file_id": 1, "token": 1, "_id": 0}
-            )
-        }
-        LAST_CACHE_TIME = time.time()
-    except Exception:
-        pass
 
 # ================= LOG STORAGE =================
 
