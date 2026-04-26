@@ -212,31 +212,30 @@ def process_update(update):
             return
 
         # ================= LOG COMMANDS =================
-        if text == "/pause_logs" and is_admin(user_id):
-            set_logging(False)
-            send_message(chat_id, "🛑 Logging paused")
-            return
+if text == "/pause_logs" and is_admin(user_id):
+    set_logging(False)
+    send_message(chat_id, "🛑 Logging paused")
+    return
 
-        if text == "/resume_logs" and is_admin(user_id):
-            set_logging(True)
-            send_message(chat_id, "✅ Logging resumed")
-            return
+if text == "/resume_logs" and is_admin(user_id):
+    set_logging(True)
+    send_message(chat_id, "✅ Logging resumed")
+    return
 
-        if text == "/log_status" and is_admin(user_id):
-            status = "ON" if is_logging_enabled() else "OFF"
-            queue_size = get_log_queue_size()
-            send_message(chat_id, f"📊 Logging: {status}\n📦 Queue: {queue_size}")
-            return
+if text == "/log_status" and is_admin(user_id):
+    status = "ON" if is_logging_enabled() else "OFF"
+    queue_size = get_log_queue_size()
+    send_message(chat_id, f"📊 Logging: {status}\n📦 Queue: {queue_size}")
+    return
 
-
-        if text == "/clear_logs" and is_admin(user_id):
+if text == "/clear_logs" and is_admin(user_id):
     cleared_queue, failed_count = clear_all_logs()
 
     send_message(
         chat_id,
         f"🧹 Logs cleared\n"
-        f"📦 Queue: {cleared_queue}\n"
-        f"⚠️ Failed: {failed_count}"
+        f"📦 Queue Cleared: {cleared_queue}\n"
+        f"⚠️ Failed Cleared: {failed_count}"
     )
     return
 
