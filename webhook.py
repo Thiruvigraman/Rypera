@@ -25,7 +25,7 @@ FAILED_LOGS: List[dict] = []
 MAX_FAILED_LOGS = 5000
 MAX_RETRY_PER_CYCLE = 50
 MAX_FIELDS = 10
-
+FREEZE_REASON = None
 LAST_SEND = 0
 session = requests.Session()
 
@@ -50,15 +50,17 @@ def get_log_queue_size():
     return log_queue.qsize()
 
 
-def set_freeze(enabled: bool, duration: int = None):
-    global FREEZE_LOGS, FREEZE_UNTIL
+def set_freeze(enabled: bool, duration: int = None, reason: str = None):
+    global FREEZE_LOGS, FREEZE_UNTIL, FREEZE_REASON
 
     FREEZE_LOGS = enabled
 
     if enabled:
         FREEZE_UNTIL = time.time() + (duration or FREEZE_DURATION)
+        FREEZE_REASON = reason or "Manual"
     else:
         FREEZE_UNTIL = 0
+        FREEZE_REASON = None
 
 def is_frozen():
     return FREEZE_LOGS
@@ -201,8 +203,7 @@ def send_payload(url, payload):
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
             print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
 
-            set_freeze(True)
-
+            set_freeze(True, reason="Cloudflare")
             try:
                 from bot import send_message
                 if ADMIN_ALERT_CHAT_ID:
