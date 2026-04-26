@@ -12,7 +12,7 @@ from database import (
     save_access_log
 )
 
-
+import webhook
 from webhook import (
     log_to_discord,
     set_logging,
@@ -257,20 +257,19 @@ def process_update(update):
             return
 
         if text == "/log_status" and is_admin(user_id):
-            status = "ON" if is_logging_enabled() else "OFF"
-            freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
-            queue_size = get_log_queue_size()
+    status = "ON" if is_logging_enabled() else "OFF"
+    freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
+    queue_size = get_log_queue_size()
+    reason = FREEZE_REASON or "—"
 
-            reason = FREEZE_REASON or "—"
-
-send_message(
-    chat_id,
-    f"📊 Logging: {status}\n"
-    f"🧊 Mode: {freeze}\n"
-    f"📛 Reason: {reason}\n"
-    f"📦 Queue: {queue_size}"
-)
-            return
+    send_message(
+        chat_id,
+        f"📊 Logging: {status}\n"
+        f"🧊 Mode: {freeze}\n"
+        f"📛 Reason: {reason}\n"
+        f"📦 Queue: {queue_size}"
+    )
+    return
 
         if text == "/clear_logs" and is_admin(user_id):
             cleared_queue, failed_count = clear_all_logs()
