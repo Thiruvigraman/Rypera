@@ -12,8 +12,7 @@ from database import (
     save_access_log
 )
 
-# ✅ FIX: import ALL needed webhook funcs
-import webhook
+
 from webhook import (
     log_to_discord,
     set_logging,
@@ -22,6 +21,7 @@ from webhook import (
     get_log_queue_size,
     set_freeze,
     is_frozen,
+    FREEZE_REASON
 )
 
 from bot import send_message, send_file
@@ -247,7 +247,7 @@ def process_update(update):
                 except:
                     pass
 
-            set_freeze(True, duration)
+            set_freeze(True, duration, reason="Manual")
             send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
             return
 
@@ -261,12 +261,15 @@ def process_update(update):
             freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
             queue_size = get_log_queue_size()
 
-            send_message(
-                chat_id,
-                f"📊 Logging: {status}\n"
-                f"🧊 Mode: {freeze}\n"
-                f"📦 Queue: {queue_size}"
-            )
+            reason = FREEZE_REASON or "—"
+
+send_message(
+    chat_id,
+    f"📊 Logging: {status}\n"
+    f"🧊 Mode: {freeze}\n"
+    f"📛 Reason: {reason}\n"
+    f"📦 Queue: {queue_size}"
+)
             return
 
         if text == "/clear_logs" and is_admin(user_id):
