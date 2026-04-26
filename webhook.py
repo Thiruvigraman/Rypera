@@ -211,8 +211,6 @@ def log_to_discord(
         if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
             return True
 
-        if log_type not in log_buffers:
-            log_type = "status"
 
         entry = {
             "message": str(message),
