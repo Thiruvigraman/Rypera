@@ -186,17 +186,23 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
 
 
 # ================= FLUSH =================
-def flush(log_type: str):
+def flush(log_type: str) -> bool:
     try:
         buffer = log_buffers.get(log_type, [])
 
         if not buffer:
-            return
+            return True
 
-        send_in_chunks(log_type, buffer)
+        success = send_in_chunks(log_type, buffer)
 
-        log_buffers[log_type] = []
-        last_flush_time[log_type] = time.time()
+        if success:
+            log_buffers[log_type] = []
+            last_flush_time[log_type] = time.time()
+
+        return success
+
+    except Exception:
+        return False
 
     except Exception as e:
         logging.error(f"{log_type} flush error: {e}")
