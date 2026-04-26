@@ -185,17 +185,25 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
 
 def log_worker():
     while True:
+        batch = []
+
         try:
-            entry = log_queue.get()
+            while len(batch) < 5:
+                entry = log_queue.get(timeout=1)
+                batch.append(entry)
+        except:
+            pass
 
-            send_in_chunks(entry["log_type"], [entry])
+        if not batch:
+            continue
 
-            log_queue.task_done()  
-
+        try:
+            send_in_chunks(batch[0]["log_type"], batch)
         except Exception as e:
-            print("Worker error:", e)
+            print("Worker batch error:", e)
 
-        time.sleep(0.2)
+        for _ in batch:
+            log_queue.task_done()
 
 threading.Thread(target=log_worker, daemon=True).start()
 
