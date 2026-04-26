@@ -47,7 +47,7 @@ COLORS = {
 
 # ================= THROTTLE =================
 
-def global_throttle(min_interval=0.15):
+def global_throttle(min_interval=0.2):
     global LAST_SEND
     with THROTTLE_LOCK:
         now = time.time()
@@ -126,25 +126,34 @@ def send_payload(url, payload):
             headers={"User-Agent": "DiscordBot"}
         )
 
+        text = res.text.strip()
+
         def safe_json():
             try:
                 return res.json()
             except Exception:
                 return {}
 
+        # Cloudflare block
+        if "cloudflare" in text.lower() or "error 1015" in text.lower():
+            time.sleep(5)
+            return False
+
+        # Rate limit
         if res.status_code == 429:
             retry_after = safe_json().get("retry_after", 2)
             time.sleep(max(2, retry_after))
             return False
 
+        # Hard fail
         if res.status_code >= 400:
-            print("DISCORD ERROR:", res.status_code)
-            print(res.text[:200])
+            time.sleep(1)
+            return False
 
-        return res.status_code in (200, 204)
+        time.sleep(0.05)
+        return True
 
-    except Exception as e:
-        print("SEND ERROR:", str(e))
+    except Exception:
         return False
 
 # ================= SEND LOGS =================
@@ -158,7 +167,6 @@ def send_logs(log_type: str, entries: List[dict]):
             write_fallback_log(e)
         return False
 
-    # ACCESS
     if log_type == "access":
         for entry in entries:
             if not send_payload(url, {"content": build_access_text(entry)}):
@@ -167,14 +175,12 @@ def send_logs(log_type: str, entries: List[dict]):
             time.sleep(0.1)
         return True
 
-    # ERROR ROUTING
     if any(e["severity"] == "error" for e in entries):
         error_url = webhook_map.get("error")
         if validate_webhook_url(error_url):
             if send_payload(error_url, build_embed(log_type, entries)):
                 return True
 
-    # NORMAL
     success = send_payload(url, build_embed(log_type, entries))
 
     if not success:
@@ -197,6 +203,8 @@ def retry_failed_logs():
     retry_failed = []
 
     for entry in current:
+        entry["_retries"] = entry.get("_retries", 0)
+
         url = webhook_map.get(entry.get("log_type"), webhook_map["status"])
 
         if entry.get("log_type") == "access":
@@ -207,19 +215,25 @@ def retry_failed_logs():
         if not success:
             retry_failed.append(entry)
 
-        time.sleep(0.3)
+        time.sleep(0.4)
 
     with FAILED_LOGS_LOCK:
         FAILED_LOGS.clear()
         FAILED_LOGS.extend(remaining)
         FAILED_LOGS.extend(retry_failed)
 
-# ================= HELPER =================
+# ================= FAILED =================
 
 def add_failed(entry):
     with FAILED_LOGS_LOCK:
+        entry["_retries"] = entry.get("_retries", 0) + 1
+
+        if entry["_retries"] > 5:
+            return
+
         if len(FAILED_LOGS) >= MAX_FAILED_LOGS:
             FAILED_LOGS.pop(0)
+
         FAILED_LOGS.append(entry)
 
 # ================= WORKER =================
@@ -241,7 +255,10 @@ def log_worker(stop_event=None):
             except Exception:
                 break
 
-        retry_failed_logs()
+        last_retry_time = getattr(log_worker, "_last_retry", 0)
+        if time.time() - last_retry_time > 10:
+            retry_failed_logs()
+            log_worker._last_retry = time.time()
 
         if not grouped:
             continue
@@ -251,12 +268,12 @@ def log_worker(stop_event=None):
             if not entries:
                 continue
 
-            batch = entries[:10]  # 🔥 smaller batch
-            remaining = entries[10:]
+            batch = entries[:5]
+            remaining = entries[5:]
 
             send_logs(log_type, batch)
 
-            for e in remaining[:10]:  # 🔥 limited requeue
+            for e in remaining[:10]:
                 log_queue.put(e)
 
         for _ in range(sum(len(v) for v in grouped.values())):
@@ -283,6 +300,5 @@ def log_to_discord(message, log_type="status", severity="info", fields=None):
         log_queue.put(entry)
         return True
 
-    except Exception as e:
-        print("LOGGING FAILURE:", str(e))
+    except Exception:
         return False
