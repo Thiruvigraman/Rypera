@@ -18,6 +18,8 @@ from config import (
 BATCH_SIZE = 5
 FLUSH_INTERVAL = 2
 MAX_FIELDS = 25
+LAST_SEND_TIME = 0
+MIN_INTERVAL = 1.2
 
 # 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
 LOG_LEVELS = {
@@ -109,6 +111,15 @@ def build_embed(log_type: str, entries: List[dict]):
 
 
 # ================= SEND =================
+
+global LAST_SEND_TIME
+
+now = time.time()
+if now - LAST_SEND_TIME < MIN_INTERVAL:
+    return False
+
+LAST_SEND_TIME = now
+
 def send_with_retry(url: str, payload: dict, log_type: str):
     delays = [1, 2, 4]
 
