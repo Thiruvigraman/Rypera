@@ -61,7 +61,7 @@ def write_fallback_log(entry):
     try:
         with open("failed_logs.txt", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
-    except:
+    except Exception:
         pass
 
 
@@ -131,7 +131,7 @@ def send_with_retry(url: str, payload: dict, log_type: str):
             if res.status_code == 429:
                 try:
                     retry_after = res.json().get("retry_after", 2)
-                except:
+                except Exception:
                     retry_after = 2
 
                 time.sleep(retry_after)
@@ -194,7 +194,7 @@ def log_worker(stop_event):
 
                 grouped.setdefault(entry["log_type"], []).append(entry)
 
-        except:
+        except Exception:
             pass
 
         if not grouped:
@@ -233,10 +233,10 @@ def log_to_discord(
         entry["fields"]["source"] = log_type
 
         if log_queue.qsize() > 10000:
-    try:
-        log_queue.get_nowait()  # drop oldest
-    except:
-        pass
+            try:
+                log_queue.get_nowait()  # drop oldest
+            except Exception:
+                pass
             print("Queue overflow, dropping logs")
             return True
 
