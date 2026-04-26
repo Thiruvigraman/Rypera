@@ -114,14 +114,16 @@ def build_embed(log_type: str, entries: List[dict]):
         ]
     }
 
-print("➡️ Sending to:", url)
-print("➡️ Payload:", payload)
 
 # ================= SEND =================
 
 def send_payload(url, payload):
     try:
         global_throttle()
+
+        # ✅ DEBUG (correct place)
+        print("➡️ Sending to:", url)
+        print("➡️ Payload:", payload)
 
         res = session.post(
             url,
@@ -138,26 +140,27 @@ def send_payload(url, payload):
             except Exception:
                 return {}
 
-        # Cloudflare block
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
+            print("CLOUDFLARE BLOCK")
             time.sleep(5)
             return False
 
-        # Rate limit
         if res.status_code == 429:
             retry_after = safe_json().get("retry_after", 2)
+            print("RATE LIMITED:", retry_after)
             time.sleep(max(2, retry_after))
             return False
 
-        # Hard fail
         if res.status_code >= 400:
+            print("DISCORD ERROR:", res.status_code, text[:200])
             time.sleep(1)
             return False
 
-        time.sleep(0.05)
+        print("✅ SENT OK")
         return True
 
-    except Exception:
+    except Exception as e:
+        print("SEND ERROR:", str(e))
         return False
 
 # ================= SEND LOGS =================
