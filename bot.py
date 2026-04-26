@@ -89,6 +89,24 @@ def send_message(chat_id, text, parse_mode=None):
         )
         return {"ok": False}
 
+# ================= EDIT MESSAGE =================
+
+def edit_message(chat_id, message_id, text, reply_markup=None):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    try:
+        session.post(url, json=payload, timeout=10)
+    except Exception:
+        pass
 
 # ================= STORAGE =================
 def forward_file_to_storage(file_id):
