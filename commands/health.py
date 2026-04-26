@@ -8,7 +8,9 @@ from webhook import log_to_discord
 from globals import start_time
 from database import get_db_size_mb
 from utils import get_username
-username = get_username(user)
+
+def handle_health(chat_id, user):
+    username = get_username(user)
 
 def handle_health(chat_id, user):
     process = psutil.Process()
