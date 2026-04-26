@@ -16,6 +16,9 @@ from handlers import process_update
 from globals import start_time
 from database import is_db_available
 from database import setup_log_ttl
+from concurrent.futures import ThreadPoolExecutor
+
+EXECUTOR = ThreadPoolExecutor(max_workers=20)
 
 app = Flask(__name__)
 
