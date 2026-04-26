@@ -24,6 +24,7 @@ import time
 import requests
 import threading
 from database import save_access_log
+from webhook import log_to_discord
 
 PROCESSED_UPDATES = set()
 USER_RATE_LIMIT = {}
