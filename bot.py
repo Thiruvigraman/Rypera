@@ -262,6 +262,8 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
 # ================= ANNOUNCEMENT =================
 
 def send_announcement(user_ids, message, parse_mode=None):
+    from database import remove_user
+
     success = 0
     failed = 0
     blocked = 0
@@ -277,12 +279,21 @@ def send_announcement(user_ids, message, parse_mode=None):
             if result and result.get("ignored"):
                 blocked += 1
 
+                # 🔥 AUTO REMOVE BLOCKED USER
+                remove_user(user_id)
+
+                log_to_discord(
+                    "User removed (blocked bot)",
+                    "list",
+                    "warning",
+                    fields={"user_id": user_id}
+                )
+
         time.sleep(0.01)
 
     total = success + failed
 
-    # ================= DISCORD LOG =================
-
+    # DISCORD LOG
     log_to_discord(
         "📢 Announcement Sent",
         "list",
@@ -295,7 +306,7 @@ def send_announcement(user_ids, message, parse_mode=None):
         }
     )
 
-    # ================= STORAGE CHAT LOG =================
+    # STORAGE LOG
     try:
         summary_text = (
             "📢 ANNOUNCEMENT REPORT\n\n"
