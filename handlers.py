@@ -8,7 +8,8 @@ from database import (
     load_movies_cached,
     is_db_available,
     get_all_users,
-    delete_movie
+    delete_movie,
+    save_access_log
 )
 from bot import send_message, send_file
 from commands.generate_link import handle_generate_link
@@ -20,14 +21,15 @@ from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 from commands.upload_movie import handle_upload
-import time
-import requests
-import threading
-from database import save_access_log
-from webhook import log_to_discord,set_logging, is_logging_enabled, get_log_queue_size
+from webhook import log_to_discord, set_logging, is_logging_enabled, get_log_queue_size
 from rate_limiter import is_rate_limited
 
+import time
+import requests
+from threading import Lock
+
 PROCESSED_UPDATES = set()
+UPDATE_LOCK = Lock()
 
 PENDING_DELETE = {}
 PENDING_ANNOUNCEMENT = {}
@@ -36,12 +38,11 @@ PENDING_ANNOUNCEMENT = {}
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
+
 def get_user_name(user):
     if user.get("username"):
         return f"@{user['username']}"
     return user.get("first_name", "User")
-
-
 
 
 def safe_send(chat_id, text):
@@ -49,19 +50,22 @@ def safe_send(chat_id, text):
     if not res or not res.get("ok"):
         log_to_discord("Send failed", "status", "error", fields={"chat_id": chat_id})
 
+
 def process_update(update):
     try:
         if not isinstance(update, dict):
             return
 
         update_id = update.get("update_id")
-        if update_id in PROCESSED_UPDATES:
-            return
 
-        PROCESSED_UPDATES.add(update_id)
+        # thread-safe dedupe
+        with UPDATE_LOCK:
+            if update_id in PROCESSED_UPDATES:
+                return
+            PROCESSED_UPDATES.add(update_id)
 
-        if len(PROCESSED_UPDATES) > 2000:
-            PROCESSED_UPDATES.clear()
+            if len(PROCESSED_UPDATES) > 2000:
+                PROCESSED_UPDATES.clear()
 
         # ================= CALLBACK =================
         if "callback_query" in update:
@@ -80,19 +84,11 @@ def process_update(update):
                 try:
                     page = int(data.split("_")[1])
                     message_id = query["message"]["message_id"]
-
                     send_page(chat_id, page, message_id)
-
                 except Exception as e:
-                    log_to_discord(
-                        "Pagination error",
-                        "status",
-                        "error",
-                        fields={"error": str(e)}
-                    )
+                    log_to_discord("Pagination error", "status", "error", fields={"error": str(e)})
                 return
 
-            # ===== ANNOUNCE CONFIRM =====
             if data == "announce_confirm" and is_admin(user_id):
                 announcement = PENDING_ANNOUNCEMENT.get(user_id)
 
@@ -105,12 +101,10 @@ def process_update(update):
 
                 for u in users:
                     res = send_message(u['user_id'], announcement)
-
                     if res and res.get("ok"):
                         success += 1
                     else:
                         failed += 1
-
                     time.sleep(0.01)
 
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
@@ -130,7 +124,6 @@ def process_update(update):
                 safe_send(chat_id, "❌ Announcement cancelled")
                 return
 
-            # ===== DELETE CONFIRM =====
             if data == "delete_confirm" and is_admin(user_id):
                 d = PENDING_DELETE.get(user_id)
 
@@ -165,24 +158,25 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
-        
-# ===== FILE UPLOAD =====
         if "document" in msg and is_admin(user_id):
             handle_upload(chat_id, msg, user)
             return
 
-        # ===== RATE LIMIT =====
         if is_rate_limited(user_id):
             return
 
         text = msg.get("text", "")
+
+        # ignore non-text users
+        if not text and not is_admin(user_id):
+            return
+
         if not is_admin(user_id):
             add_user(user_id, user.get("first_name", "User"))
 
         if not is_db_available():
             safe_send(chat_id, "⚠️ Database unavailable")
             return
-
 
         # ================= COMMANDS =================
         if text.startswith("/generate_link") and is_admin(user_id):
@@ -231,13 +225,10 @@ def process_update(update):
         if text == "/log_status" and is_admin(user_id):
             status = "ON" if is_logging_enabled() else "OFF"
             queue_size = get_log_queue_size()
-
-            send_message(
-                chat_id,
-                f"📊 Logging Status: {status}\n📦 Queue Size: {queue_size}"
-            )
+            send_message(chat_id, f"📊 Logging: {status}\n📦 Queue: {queue_size}")
             return
-# ================= START =================
+
+        # ================= START =================
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
 
@@ -246,7 +237,6 @@ def process_update(update):
             if movie:
                 send_file(chat_id, movie["file_id"])
                 increment_movie_access(movie["name"])
-
                 save_access_log(user_id, movie["name"])
 
                 log_to_discord(
@@ -261,26 +251,13 @@ def process_update(update):
                 )
                 return
 
-            # fallback
             name = query.replace("_", " ")
             movies = load_movies_cached()
 
             if name in movies:
                 send_file(chat_id, movies[name]["file_id"])
                 increment_movie_access(name)
-
                 save_access_log(user_id, name)
-
-                log_to_discord(
-                    "🎬 File Accessed",
-                    "access",
-                    "info",
-                    fields={
-                        "User": get_user_name(user),
-                        "User ID": user_id,
-                        "Movie": name
-                    }
-                )
                 return
 
             safe_send(chat_id, "❌ Invalid or expired link")
