@@ -49,13 +49,11 @@ def safe_send(chat_id, text):
     if not res or not res.get("ok"):
         log_to_discord("Send failed", "status", "error", fields={"chat_id": chat_id})
 
-
 def process_update(update):
     try:
         if not isinstance(update, dict):
             return
 
-        # ===== DUPLICATE =====
         update_id = update.get("update_id")
         if update_id in PROCESSED_UPDATES:
             return
@@ -66,36 +64,33 @@ def process_update(update):
             PROCESSED_UPDATES.clear()
 
         # ================= CALLBACK =================
+        if "callback_query" in update:
+            query = update["callback_query"]
+            data = query.get("data")
+            user_id = query["from"]["id"]
+            chat_id = query["message"]["chat"]["id"]
 
-if "callback_query" in update:
-    query = update["callback_query"]
-    data = query.get("data")
-    user_id = query["from"]["id"]
-    chat_id = query["message"]["chat"]["id"]
-
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-        json={"callback_query_id": query["id"]},
-        timeout=5
-    )
-
-    # ✅ FIXED INDENT
-    if data and data.startswith("list_"):
-        try:
-            page = int(data.split("_")[1])
-            message_id = query["message"]["message_id"]
-
-            send_page(chat_id, page, message_id)
-
-        except Exception as e:
-            log_to_discord(
-                "Pagination error",
-                "status",
-                "error",
-                fields={"error": str(e)}
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+                json={"callback_query_id": query["id"]},
+                timeout=5
             )
 
-        return
+            if data and data.startswith("list_"):
+                try:
+                    page = int(data.split("_")[1])
+                    message_id = query["message"]["message_id"]
+
+                    send_page(chat_id, page, message_id)
+
+                except Exception as e:
+                    log_to_discord(
+                        "Pagination error",
+                        "status",
+                        "error",
+                        fields={"error": str(e)}
+                    )
+                return
 
             # ===== ANNOUNCE CONFIRM =====
             if data == "announce_confirm" and is_admin(user_id):
