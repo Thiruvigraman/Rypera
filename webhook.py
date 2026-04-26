@@ -237,7 +237,7 @@ def log_to_discord(
     return False  # prevent flood
 
 log_queue.put({**entry, "log_type": log_type})
-        return True
+return True
 
     except Exception as e:
         print("LOGGING FAILURE:", str(e))
