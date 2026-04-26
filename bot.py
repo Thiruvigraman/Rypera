@@ -260,9 +260,11 @@ def delete_user_messages(chat_id, file_message_id, warning_message_id):
 
 
 # ================= ANNOUNCEMENT =================
+
 def send_announcement(user_ids, message, parse_mode=None):
     success = 0
     failed = 0
+    blocked = 0
 
     for user_id in user_ids:
         result = send_message(user_id, message, parse_mode)
@@ -272,21 +274,49 @@ def send_announcement(user_ids, message, parse_mode=None):
         else:
             failed += 1
 
+            if result and result.get("ignored"):
+                blocked += 1
+
         time.sleep(0.01)
 
+    total = success + failed
+
+    # ================= DISCORD LOG =================
+
     log_to_discord(
-        "📢 Announcement Summary",
+        "📢 Announcement Sent",
         "list",
         "info",
         fields={
+            "Total Users": total,
             "Success": success,
             "Failed": failed,
-            "Total": success + failed
+            "Blocked": blocked
         }
     )
 
-    return success, failed
+    # ================= STORAGE CHAT LOG =================
+    try:
+        summary_text = (
+            "📢 ANNOUNCEMENT REPORT\n\n"
+            f"📝 Message: {message[:100]}\n\n"
+            f"👥 Total Users: {total}\n"
+            f"✅ Success: {success}\n"
+            f"❌ Failed: {failed}\n"
+            f"🚫 Blocked: {blocked}"
+        )
 
+        send_message(STORAGE_CHAT_ID, summary_text)
+
+    except Exception as e:
+        log_to_discord(
+            "Storage announcement log failed",
+            "status",
+            "error",
+            fields={"error": str(e)}
+        )
+
+    return success, failed
 
 # ================= CLEANUP =================
 def cleanup_pending_files():
