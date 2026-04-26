@@ -3,6 +3,8 @@
 from database import rename_movie
 from bot import send_message
 from webhook import log_to_discord
+from utils import get_username
+username = get_username(user)
 
 
 def handle_rename(chat_id, text, user):
@@ -17,7 +19,6 @@ def handle_rename(chat_id, text, user):
     if rename_movie(old_name, new_name):
         send_message(chat_id, f"✅ Renamed:\n{old_name} → {new_name}")
 
-        username = f"@{user['username']}" if user.get("username") else user.get("first_name", "Admin")
 
         log_to_discord(
             message="✏️ Movie Renamed",
