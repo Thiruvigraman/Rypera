@@ -311,6 +311,16 @@ def get_stats():
     except Exception:
         return {"movie_count": 0, "user_count": 0}
 
+# ================= REMOVE BLOCKED USERS =================
+
+def remove_user(user_id):
+    if not MONGO_AVAILABLE:
+        return
+
+    try:
+        users_collection.delete_one({"user_id": user_id})
+    except Exception:
+        pass
 
 # ================= FILE CLEAN =================
 def save_sent_file(chat_id, file_message_id, warning_message_id, timestamp):
