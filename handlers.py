@@ -25,9 +25,9 @@ import requests
 import threading
 from database import save_access_log
 from webhook import log_to_discord
+from rate_limiter import is_rate_limited
 
 PROCESSED_UPDATES = set()
-USER_RATE_LIMIT = {}
 
 PENDING_DELETE = {}
 PENDING_ANNOUNCEMENT = {}
@@ -165,11 +165,8 @@ def process_update(update):
             handle_upload(chat_id, msg, user)
             return
 
-        now = time.time()
-        if now - USER_RATE_LIMIT.get(user_id, 0) < 0.5:
-            return
-
-        USER_RATE_LIMIT[user_id] = now
+        if is_rate_limited(user_id):
+    return
 
         text = msg.get("text", "")
 
