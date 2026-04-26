@@ -176,12 +176,6 @@ def start_background_monitor():
     threading.Thread(target=monitor_mongo, daemon=True).start()
 
 
-def start_log_worker():
-    threading.Thread(
-        target=log_worker,
-        args=(log_stop_event,),
-        daemon=True
-    ).start()
 
 
 # ================= 🔥 INSTANT STARTUP =================
@@ -194,7 +188,7 @@ def init_system():
         initialized = True
 
     log_to_discord("🟢 Bot is online", "status", "info")
-    start_log_worker()
+    
     from database import refresh_movie_cache, setup_log_ttl
 
     refresh_movie_cache()
