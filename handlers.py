@@ -44,14 +44,8 @@ def get_user_name(user):
     return user.get("first_name", "User")
 
 
-def log_access_async(user, user_id, movie_name):
-    try:
-        username = get_user_name(user)
 
         save_access_log(user_id, movie["name"])
-
-    except:
-        pass
 
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
