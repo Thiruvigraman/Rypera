@@ -19,7 +19,7 @@ from config import (
 
 MAX_FIELDS = 25
 LAST_SEND_TIME = 0
-MIN_INTERVAL = 2.5
+MIN_INTERVAL = 5
 
 # 🔥 LOG LEVEL CONTROL (ANTI-SPAM)
 LOG_LEVELS = {
@@ -233,11 +233,13 @@ def log_to_discord(
             except Exception:
                 pass
 
+        # 🔥 FIXED INDENTATION
         if log_queue.qsize() > 100:
-    return False  # prevent flood
+            return False
 
-log_queue.put({**entry, "log_type": log_type})
-return True
+        log_queue.put({**entry, "log_type": log_type})
+
+        return True
 
     except Exception as e:
         print("LOGGING FAILURE:", str(e))
