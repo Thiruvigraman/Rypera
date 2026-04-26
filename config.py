@@ -35,6 +35,7 @@ MONGODB_URI = os.getenv("MONGODB_URI")
 DISCORD_WEBHOOK_STATUS = os.getenv("DISCORD_WEBHOOK_STATUS")
 DISCORD_WEBHOOK_LIST_LOGS = os.getenv("DISCORD_WEBHOOK_LIST_LOGS")
 DISCORD_WEBHOOK_FILE_ACCESS = os.getenv("DISCORD_WEBHOOK_FILE_ACCESS")
+DISCORD_WEBHOOK_ERRORS = os.getenv("DISCORD_WEBHOOK_ERRORS")
 
 
 # ================= OPTIONAL VALIDATION =================
@@ -51,6 +52,9 @@ if DISCORD_WEBHOOK_LIST_LOGS and not validate_webhook(DISCORD_WEBHOOK_LIST_LOGS)
 
 if DISCORD_WEBHOOK_FILE_ACCESS and not validate_webhook(DISCORD_WEBHOOK_FILE_ACCESS):
     print("⚠️ Invalid FILE_ACCESS webhook")
+
+if DISCORD_WEBHOOK_ERRORS and not validate_webhook(DISCORD_WEBHOOK_ERRORS):
+    print("⚠️ Invalid ERRORS webhook")
 
 
 # ================= EMBED CONFIG =================
