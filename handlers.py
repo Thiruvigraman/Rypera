@@ -1,4 +1,4 @@
-handlers.py (Refactored - Modular, Production Ready)
+# file : handlers.py
 
 from config import ADMIN_IDS, BOT_TOKEN from database import ( add_user, get_movie_by_token, increment_movie_access, load_movies_cached, is_db_available, get_all_users, delete_movie, save_access_log ) from webhook import ( log_to_discord, set_logging, is_logging_enabled, clear_all_logs, get_log_queue_size, set_freeze, is_frozen, ADMIN_ALERT_CHAT_ID ) from bot import send_message, send_file
 
