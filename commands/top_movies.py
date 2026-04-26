@@ -4,7 +4,9 @@ from database import get_top_movies
 from bot import send_message
 from webhook import log_to_discord
 from utils import get_username
-username = get_username(user)
+
+def handle_top_movies(chat_id, user):
+    username = get_username(user)
 
 
 def handle_top_movies(chat_id, user):
