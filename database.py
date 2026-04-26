@@ -345,6 +345,51 @@ def refresh_movie_cache():
     except:
         pass
 
+# ================= LOG STORAGE =================
+
+def save_access_log(user_id, movie_name):
+    if not MONGO_AVAILABLE:
+        return
+
+    try:
+        db['access_logs'].insert_one({
+            "user_id": user_id,
+            "movie": movie_name,
+            "timestamp": time.time(),
+            "sent": False
+        })
+    except:
+        pass
+
+
+def get_unsent_logs(limit=20):
+    try:
+        return list(db['access_logs'].find({"sent": False}).limit(limit))
+    except:
+        return []
+
+
+def mark_log_sent(log_id):
+    try:
+        db['access_logs'].update_one(
+            {"_id": log_id},
+            {"$set": {"sent": True}}
+        )
+    except:
+        pass
+
+
+# ================= TTL INDEX =================
+
+def setup_log_ttl():
+    try:
+        db['access_logs'].create_index(
+            "timestamp",
+            expireAfterSeconds=7 * 24 * 60 * 60  # 7 days
+        )
+    except:
+        pass
+
 # ================= DB SIZE =================
 def get_db_size_mb():
     if not MONGO_AVAILABLE:
