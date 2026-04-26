@@ -15,8 +15,7 @@ from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
 from globals import start_time
 from database import is_db_available
-from database import setup_log_ttl, get_unsent_logs, mark_log_sent
-
+from database import setup_log_ttl
 
 app = Flask(__name__)
 
