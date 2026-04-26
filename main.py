@@ -270,12 +270,7 @@ def handle_webhook():
             user = update["message"].get("from", {})
             username = user.get("username") or user.get("first_name")
 
-            log_to_discord(
-                "📩 Message received",
-                "status",
-                "info",
-                fields={"user": username}
-            )
+            pass
 
         # ✅ safe thread wrapper
         def safe_process(update):
