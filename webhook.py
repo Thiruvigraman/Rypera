@@ -205,8 +205,8 @@ def log_worker(stop_event=None):
 
         # send grouped logs safely
         for log_type, entries in grouped.items():
-            try:
-                send_in_chunks(log_type, entries)
+    send_in_chunks(log_type, entries)
+    time.sleep(1.5)
             except Exception as e:
                 print("Worker batch error:", e)
 
