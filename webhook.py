@@ -214,13 +214,7 @@ def log_worker(stop_event=None):
 
 # ================= MAIN LOG =================
 
-def log_to_discord(
-    message: str,
-    log_type="status",
-    severity="info",
-    fields: Optional[Dict[str, str]] = None,
-    force_flush: bool = False,
-) -> bool:
+def log_to_discord(...):
     try:
         if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
             return True
@@ -234,12 +228,13 @@ def log_to_discord(
 
         entry["fields"]["source"] = log_type
 
-if log_queue.qsize() > 10000:
-    try:
-        log_queue.get_nowait()
-    except Exception:
-        pass
-log_queue.put({**entry, "log_type": log_type})
+        if log_queue.qsize() > 10000:
+            try:
+                log_queue.get_nowait()
+            except Exception:
+                pass
+
+        log_queue.put({**entry, "log_type": log_type})
 
         return True
 
