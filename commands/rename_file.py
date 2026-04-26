@@ -4,7 +4,9 @@ from database import rename_movie
 from bot import send_message
 from webhook import log_to_discord
 from utils import get_username
-username = get_username(user)
+
+def handle_rename(chat_id, text, user):
+    username = get_username(user)
 
 
 def handle_rename(chat_id, text, user):
