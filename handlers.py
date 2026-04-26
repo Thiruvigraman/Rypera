@@ -11,6 +11,15 @@ from database import (
     delete_movie,
     save_access_log
 )
+from webhook import (
+    log_to_discord,
+    set_logging,
+    is_logging_enabled,
+    clear_all_logs,
+    get_log_queue_size,
+    set_freeze,
+    is_frozen
+)
 from bot import send_message, send_file
 from commands.generate_link import handle_generate_link
 from commands.delete_movie import handle_delete_movie
@@ -21,7 +30,6 @@ from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 from commands.upload_movie import handle_upload
-from webhook import log_to_discord, set_logging, is_logging_enabled,clear_all_logs, get_log_queue_size
 from rate_limiter import is_rate_limited
 
 import time
@@ -211,7 +219,7 @@ def process_update(update):
             handle_list_movies(chat_id, user)
             return
 
-        # ================= LOG COMMANDS =================
+ # ================= LOG COMMANDS =================
 if text == "/pause_logs" and is_admin(user_id):
     set_logging(False)
     send_message(chat_id, "🛑 Logging paused")
@@ -222,10 +230,27 @@ if text == "/resume_logs" and is_admin(user_id):
     send_message(chat_id, "✅ Logging resumed")
     return
 
+if text == "/freeze_logs" and is_admin(user_id):
+    set_freeze(True)
+    send_message(chat_id, "🧊 Logs frozen (worker stopped)")
+    return
+
+if text == "/unfreeze_logs" and is_admin(user_id):
+    set_freeze(False)
+    send_message(chat_id, "🔥 Logs resumed")
+    return
+
 if text == "/log_status" and is_admin(user_id):
     status = "ON" if is_logging_enabled() else "OFF"
+    freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
     queue_size = get_log_queue_size()
-    send_message(chat_id, f"📊 Logging: {status}\n📦 Queue: {queue_size}")
+
+    send_message(
+        chat_id,
+        f"📊 Logging: {status}\n"
+        f"🧊 Mode: {freeze}\n"
+        f"📦 Queue: {queue_size}"
+    )
     return
 
 if text == "/clear_logs" and is_admin(user_id):
