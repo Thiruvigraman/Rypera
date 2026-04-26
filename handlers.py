@@ -185,60 +185,58 @@ def process_update(update):
 
 
         # ================= COMMANDS =================
+        if text.startswith("/generate_link") and is_admin(user_id):
+            handle_generate_link(chat_id, text, user)
+            return
 
-if text.startswith("/generate_link") and is_admin(user_id):
-    handle_generate_link(chat_id, text, user)
-    return
+        if text.startswith("/delete_movie") and is_admin(user_id):
+            handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
+            return
 
-if text.startswith("/delete_movie") and is_admin(user_id):
-    handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
-    return
+        if text.startswith("/rename_file") and is_admin(user_id):
+            handle_rename(chat_id, text, user)
+            return
 
-if text.startswith("/rename_file") and is_admin(user_id):
-    handle_rename(chat_id, text, user)
-    return
+        if text.startswith("/announce") and is_admin(user_id):
+            handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
+            return
 
-if text.startswith("/announce") and is_admin(user_id):
-    handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
-    return
+        if text == "/stats" and is_admin(user_id):
+            handle_stats(chat_id, user)
+            return
 
-if text == "/stats" and is_admin(user_id):
-    handle_stats(chat_id, user)
-    return
+        if text == "/top_movies" and is_admin(user_id):
+            handle_top_movies(chat_id, user)
+            return
 
-if text == "/top_movies" and is_admin(user_id):
-    handle_top_movies(chat_id, user)
-    return
+        if text == "/health" and is_admin(user_id):
+            handle_health(chat_id, user)
+            return
 
-if text == "/health" and is_admin(user_id):
-    handle_health(chat_id, user)
-    return
+        if text == "/list_movies" and is_admin(user_id):
+            handle_list_movies(chat_id, user)
+            return
 
-if text == "/list_movies" and is_admin(user_id):
-    handle_list_movies(chat_id, user)
-    return
+        # ================= LOG COMMANDS =================
+        if text == "/pause_logs" and is_admin(user_id):
+            set_logging(False)
+            send_message(chat_id, "🛑 Logging paused")
+            return
 
-# ================= LOG COMMANDS =================
-if text == "/pause_logs" and is_admin(user_id):
-    set_logging(False)
-    send_message(chat_id, "🛑 Logging paused")
-    return
+        if text == "/resume_logs" and is_admin(user_id):
+            set_logging(True)
+            send_message(chat_id, "✅ Logging resumed")
+            return
 
-if text == "/resume_logs" and is_admin(user_id):
-    set_logging(True)
-    send_message(chat_id, "✅ Logging resumed")
-    return
+        if text == "/log_status" and is_admin(user_id):
+            status = "ON" if is_logging_enabled() else "OFF"
+            queue_size = get_log_queue_size()
 
-if text == "/log_status" and is_admin(user_id):
-    status = "ON" if is_logging_enabled() else "OFF"
-    queue_size = get_log_queue_size()
-
-    send_message(
-        chat_id,
-        f"📊 Logging Status: {status}\n📦 Queue Size: {queue_size}"
-    )
-    return
-
+            send_message(
+                chat_id,
+                f"📊 Logging Status: {status}\n📦 Queue Size: {queue_size}"
+            )
+            return
 # ================= START =================
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
