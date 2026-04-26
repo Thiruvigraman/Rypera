@@ -7,7 +7,7 @@ import requests
 import logging
 import time
 import json
-from queue import Queue
+from globals import log_queue
 import threading
 from datetime import datetime
 from typing import Dict, Optional, List
@@ -17,8 +17,7 @@ from config import (
     DISCORD_WEBHOOK_FILE_ACCESS,
 )
 
-BATCH_SIZE = 5
-FLUSH_INTERVAL = 2
+
 MAX_FIELDS = 25
 LAST_SEND_TIME = 0
 MIN_INTERVAL = 1.2
@@ -47,17 +46,6 @@ COLORS = {
     "error": 0xE74C3C,
 }
 
-log_buffers = {
-    "status": [],
-    "list": [],
-    "access": [],
-}
-
-last_flush_time = {
-    "status": time.time(),
-    "list": time.time(),
-    "access": time.time(),
-}
 
 webhook_map = {
     "status": DISCORD_WEBHOOK_STATUS,
@@ -67,6 +55,7 @@ webhook_map = {
 
 
 # ================= FALLBACK =================
+
 def write_fallback_log(entry):
     try:
         with open("failed_logs.txt", "a", encoding="utf-8") as f:
@@ -76,11 +65,13 @@ def write_fallback_log(entry):
 
 
 # ================= SAFETY =================
+
 def validate_webhook_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith("https://discord.com/api/webhooks/")
 
 
 # ================= EMBED =================
+
 def build_embed(log_type: str, entries: List[dict]):
     fields = []
 
@@ -154,6 +145,7 @@ def send_with_retry(url: str, payload: dict, log_type: str):
     return False
 
 # ================= CHUNKS =================
+
 def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
     url = webhook_map.get(log_type)
 
@@ -187,32 +179,10 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
     return success_all
 
 
-# ================= FLUSH =================
-def flush(log_type: str) -> bool:
-    try:
-        buffer = log_buffers.get(log_type, [])
 
-        if not buffer:
-            return True
-
-        success = send_in_chunks(log_type, buffer)
-
-        if success:
-            log_buffers[log_type] = []
-            last_flush_time[log_type] = time.time()
-
-        return success
-
-    except Exception as e:
-        logging.error(f"{log_type} flush error: {e}")
-        return False
-
-
-def flush_all():
-    for log_type in list(log_buffers.keys()):
-        flush(log_type)
 
 # ========== LOG WORKER==========
+
 def log_worker():
     while True:
         try:
@@ -253,22 +223,8 @@ def log_to_discord(
 
         entry["fields"]["source"] = log_type
 
-        if severity == "error":
-    log_queue.put({**entry, "log_type": log_type})
-       return True
-
+        # push to queue
         log_queue.put({**entry, "log_type": log_type})
-
-        now = time.time()
-
-        if len(log_buffers[log_type]) >= BATCH_SIZE:
-            return flush(log_type)
-
-        if now - last_flush_time[log_type] >= FLUSH_INTERVAL:
-            return flush(log_type)
-
-        if force_flush:
-            return flush(log_type)
 
         return True
 
