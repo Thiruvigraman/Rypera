@@ -183,8 +183,10 @@ def send_in_chunks(log_type: str, entries: List[dict]) -> bool:
 
 # ========== LOG WORKER==========
 
-def log_worker(stop_event):
-    while not stop_event.is_set():
+def log_worker(stop_event=None):
+    while True:
+        if stop_event and stop_event.is_set():
+            break
         grouped = {}
 
         try:
