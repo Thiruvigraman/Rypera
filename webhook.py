@@ -27,12 +27,12 @@ MAX_RETRY_PER_CYCLE = 50
 MAX_FIELDS = 10
 
 LAST_SEND = 0
-
 session = requests.Session()
 
 # ================= GLOBAL LOG SWITCH =================
 
 LOGGING_ENABLED = True
+FREEZE_LOGS = False
 
 def set_logging(enabled: bool):
     global LOGGING_ENABLED
@@ -45,6 +45,14 @@ def is_logging_enabled():
 
 def get_log_queue_size():
     return log_queue.qsize()
+
+
+def set_freeze(enabled: bool):
+    global FREEZE_LOGS
+    FREEZE_LOGS = enabled
+
+def is_frozen():
+    return FREEZE_LOGS
 
 # ================= CONFIG =================
 
@@ -176,9 +184,10 @@ def send_payload(url, payload):
                 return {}
 
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
-            print("CLOUDFLARE BLOCK")
-            time.sleep(5)
-            return False
+    print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
+    set_freeze(True)  # 🔥 AUTO FREEZE
+    time.sleep(5)
+    return False
 
         if res.status_code == 429:
             retry_after = safe_json().get("retry_after", 2)
@@ -280,12 +289,15 @@ def add_failed(entry):
 
 # ================= WORKER =================
 
-# file: webhook.py
-
 def log_worker(stop_event=None):
     while True:
         if stop_event and stop_event.is_set():
             break
+
+        # 🧊 FREEZE MODE
+        if FREEZE_LOGS:
+            time.sleep(5)
+            continue
 
         interval = 3 if log_queue.qsize() > 100 else 5
         time.sleep(interval)
@@ -329,7 +341,7 @@ def log_worker(stop_event=None):
 def log_to_discord(message, log_type="status", severity="info", fields=None, force_flush=False):
     try:
         # 🚫 HARD STOP
-        if not LOGGING_ENABLED:
+        if not LOGGING_ENABLED or FREEZE_LOGS:
             return False
 
         entry = {
