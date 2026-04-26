@@ -9,7 +9,7 @@ import psutil
 import threading
 from flask import Flask, request, jsonify
 
-from bot import cleanup_pending_files
+from utils import cleanup_pending_files
 from webhook import log_to_discord
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
