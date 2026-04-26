@@ -117,7 +117,7 @@ def send_with_retry(url: str, payload: dict, log_type: str):
     if wait > 0:
         time.sleep(wait)
 
-    delays = [2, 4, 6]
+    delays = [3, 6, 10]
 
     for attempt in range(len(delays)):
         try:
@@ -128,20 +128,13 @@ def send_with_retry(url: str, payload: dict, log_type: str):
                 return True
 
             if res.status_code == 429:
-                try:
-                    retry_after = res.json().get("retry_after", 3)
-                except Exception:
-                    retry_after = 3
-
-                time.sleep(retry_after + 1)
+                time.sleep(10)  # hard cooldown
                 continue
 
         except Exception:
             pass
 
         time.sleep(delays[attempt])
-
-    
 
     logging.error(f"{log_type} send failed permanently")
     return False
@@ -192,9 +185,8 @@ def log_worker(stop_event=None):
         grouped = {}
 
         try:
-            for _ in range(2):
-                entry = log_queue.get(timeout=1)
-                grouped.setdefault(entry["log_type"], []).append(entry)
+            entry = log_queue.get(timeout=2)
+            grouped.setdefault(entry["log_type"], []).append(entry)
         except Exception:
             pass
 
@@ -204,12 +196,14 @@ def log_worker(stop_event=None):
         for log_type, entries in grouped.items():
             try:
                 send_in_chunks(log_type, entries)
-                time.sleep(1.5)  # prevent burst
             except Exception as e:
-                print("Worker batch error:", e)
+                print("Worker error:", e)
+
+        time.sleep(4)  # 🔥 VERY IMPORTANT cooldown
 
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
+
 
 # ================= MAIN LOG =================
 
@@ -239,8 +233,10 @@ def log_to_discord(
             except Exception:
                 pass
 
-        log_queue.put({**entry, "log_type": log_type})
+        if log_queue.qsize() > 100:
+    return False  # prevent flood
 
+log_queue.put({**entry, "log_type": log_type})
         return True
 
     except Exception as e:
