@@ -119,7 +119,7 @@ def send_with_retry(url: str, payload: dict, log_type: str):
 
     for attempt in range(len(delays)):
         try:
-            res = requests.post(url, json=payload, timeout=5)
+            res = session.post(url, json=payload, timeout=5)
 
             # ✅ DEBUG LOG (WHY needed → see Discord errors)
             if res.status_code not in (200, 204):
