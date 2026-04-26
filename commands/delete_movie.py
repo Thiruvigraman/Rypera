@@ -9,7 +9,9 @@ from bot import send_message
 from config import BOT_TOKEN
 from webhook import log_to_discord
 from utils import get_username
-username = get_username(user)
+
+def handle_delete_movie(chat_id, text, user_id, pending_delete, user):
+    username = get_username(user)
 
 
 def handle_delete_movie(chat_id, text, user_id, pending_delete, user):
