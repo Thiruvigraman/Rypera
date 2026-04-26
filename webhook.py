@@ -132,17 +132,23 @@ def build_embed(log_type: str, entries: List[dict]):
 
 # ================= CLEAR LOG QUEUE =================
 
-def clear_log_queue():
-    cleared = 0
+def clear_all_logs():
+    cleared_queue = 0
 
+    # clear queue
     while not log_queue.empty():
         try:
             log_queue.get_nowait()
-            cleared += 1
+            cleared_queue += 1
         except Exception:
             break
 
-    return cleared
+    # clear failed logs
+    with FAILED_LOGS_LOCK:
+        failed_count = len(FAILED_LOGS)
+        FAILED_LOGS.clear()
+
+    return cleared_queue, failed_count
 
 # ================= SEND =================
 
