@@ -14,7 +14,9 @@ from webhook import log_to_discord
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import process_update
 from globals import start_time
-from database import is_db_available  # ✅ NEW
+from database import is_db_available
+from database import setup_log_ttl, get_unsent_logs, mark_log_sent
+
 
 app = Flask(__name__)
 
