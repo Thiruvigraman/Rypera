@@ -192,7 +192,7 @@ def log_worker(stop_event=None):
 
         try:
             # collect batch
-            for _ in range(5):
+            for _ in range(2):
                 entry = log_queue.get(timeout=1)
 
                 grouped.setdefault(entry["log_type"], []).append(entry)
