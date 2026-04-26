@@ -48,7 +48,7 @@ def handle_delete_movie(chat_id, text, user_id, pending_delete, user):
             "chat_id": chat_id,
             "text": f"⚠️ Confirm delete:\n\n🎬 {movie}",
             "reply_markup": keyboard
-        }
+        },timeout=10
     )
 
 
