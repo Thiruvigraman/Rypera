@@ -159,21 +159,24 @@ def process_update(update):
                 return
 
         # ================= MESSAGE =================
-        if "message" not in update:
-            return
 
-        msg = update["message"]
-        chat_id = msg["chat"]["id"]
-        user = msg["from"]
-        user_id = user["id"]
+if "message" not in update:
+    return
 
+msg = update["message"]
+chat_id = msg["chat"]["id"]
+user = msg["from"]
+user_id = user["id"]
+
+# ✅ FIXED GLOBAL ALERT SET
 import webhook
 if is_admin(user_id):
     webhook.ADMIN_ALERT_CHAT_ID = chat_id
 
-        if "document" in msg and is_admin(user_id):
-            handle_upload(chat_id, msg, user)
-            return
+# FILE UPLOAD
+if "document" in msg and is_admin(user_id):
+    handle_upload(chat_id, msg, user)
+    return
 
         if is_rate_limited(user_id):
             return
