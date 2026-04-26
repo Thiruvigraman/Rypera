@@ -222,17 +222,17 @@ def process_update(update):
                 send_file(chat_id, movie["file_id"])
                 increment_movie_access(movie["name"])
 
-                username = get_user_name(user)
-
+                
                 save_access_log(user_id, movie["name"])
-               log_to_discord(
+
+log_to_discord(
     "🎬 File Accessed",
     "access",
     "info",
     fields={
         "User": get_user_name(user),
         "User ID": user_id,
-        "Movie": movie["name"] if "movie" in locals() else name
+        "Movie": movie["name"]
     }
 )
                 return
@@ -245,17 +245,18 @@ def process_update(update):
                 send_file(chat_id, movies[name]["file_id"])
                 increment_movie_access(name)
 
-                username = get_user_name(user)
+                
 
                 save_access_log(user_id, name)
-               log_to_discord(
+
+log_to_discord(
     "🎬 File Accessed",
     "access",
     "info",
     fields={
         "User": get_user_name(user),
         "User ID": user_id,
-        "Movie": movie["name"] if "movie" in locals() else name
+        "Movie": name
     }
 )
                 return
