@@ -43,7 +43,6 @@ def get_user_name(user):
 
 
 
-        save_access_log(user_id, movie["name"])
 
 def safe_send(chat_id, text):
     res = send_message(chat_id, text)
