@@ -105,41 +105,43 @@ def build_embed(log_type: str, entries: List[dict]):
 
 # ================= SEND =================
 
+LAST_SEND_TIME = 0
+MIN_INTERVAL = 2.5  # increase delay
+
+
 def send_with_retry(url: str, payload: dict, log_type: str):
     global LAST_SEND_TIME
 
     now = time.time()
-    if now - LAST_SEND_TIME < MIN_INTERVAL:
-        time.sleep(MIN_INTERVAL)
+    wait = MIN_INTERVAL - (now - LAST_SEND_TIME)
+    if wait > 0:
+        time.sleep(wait)
 
-    LAST_SEND_TIME = time.time()
-
-    delays = [1, 2, 4]
+    delays = [2, 4, 6]
 
     for attempt in range(len(delays)):
         try:
             res = session.post(url, json=payload, timeout=5)
 
-            # ✅ DEBUG LOG (WHY needed → see Discord errors)
-            if res.status_code not in (200, 204):
-                logging.error(f"{log_type} webhook failed: {res.status_code} {res.text}")
-
             if res.status_code in (200, 204):
+                LAST_SEND_TIME = time.time()
                 return True
 
             if res.status_code == 429:
                 try:
-                    retry_after = res.json().get("retry_after", 2)
+                    retry_after = res.json().get("retry_after", 3)
                 except Exception:
-                    retry_after = 2
+                    retry_after = 3
 
-                time.sleep(retry_after)
+                time.sleep(retry_after + 1)
                 continue
 
-        except Exception as e:
-            logging.warning(f"{log_type} send error: {e}")
+        except Exception:
+            pass
 
         time.sleep(delays[attempt])
+
+    
 
     logging.error(f"{log_type} send failed permanently")
     return False
