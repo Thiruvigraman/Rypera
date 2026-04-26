@@ -21,7 +21,7 @@ def send_page(chat_id, page):
     if pages == 0:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": "No movies available"}
+            json={"chat_id": chat_id, "text": "No movies available"},timeout=10
         )
         return
 
