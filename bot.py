@@ -9,6 +9,7 @@ from config import BOT_TOKEN, STORAGE_CHAT_ID
 from database import save_sent_file, delete_sent_file_record, get_pending_files
 from webhook import log_to_discord
 
+session = requests.Session()
 
 # ================= RATE LIMIT =================
 USER_LAST_REQUEST = defaultdict(float)
