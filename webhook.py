@@ -8,7 +8,6 @@ import logging
 import time
 import json
 from globals import log_queue
-import threading
 from datetime import datetime
 from typing import Dict, Optional, List
 from config import (
@@ -214,7 +213,13 @@ def log_worker(stop_event=None):
 
 # ================= MAIN LOG =================
 
-def log_to_discord(...):
+def log_to_discord(
+    message: str,
+    log_type="status",
+    severity="info",
+    fields: Optional[Dict[str, str]] = None,
+    force_flush: bool = False,
+) -> bool:
     try:
         if LOG_LEVELS.get(severity, 1) < CURRENT_LOG_LEVEL:
             return True
