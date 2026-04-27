@@ -21,7 +21,7 @@ from webhook import (
     get_log_queue_size,
     set_freeze,
     is_frozen,
-    FREEZE_REASON
+    
 )
 
 from bot import send_message, send_file
@@ -257,20 +257,19 @@ def process_update(update):
             return
 
         if text == "/log_status" and is_admin(user_id):
-    status = "ON" if is_logging_enabled() else "OFF"
-    freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
-    queue_size = get_log_queue_size()
-    reason = FREEZE_REASON or "—"
+            status = "ON" if is_logging_enabled() else "OFF"
+            freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
+            queue_size = get_log_queue_size()
+            reason = getattr(webhook, "FREEZE_REASON", None) or "—"
 
-    send_message(
-        chat_id,
-        f"📊 Logging: {status}\n"
-        f"🧊 Mode: {freeze}\n"
-        f"📛 Reason: {reason}\n"
-        f"📦 Queue: {queue_size}"
-    )
-    return
-
+            send_message(
+                chat_id,
+                f"📊 Logging: {status}\n"
+                f"🧊 Mode: {freeze}\n"
+                f"📛 Reason: {reason}\n"
+                f"📦 Queue: {queue_size}"
+            )
+            return
         if text == "/clear_logs" and is_admin(user_id):
             cleared_queue, failed_count = clear_all_logs()
 
