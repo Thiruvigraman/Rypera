@@ -212,7 +212,6 @@ threading.Thread(
 def start_cleanup_loop():
     while True:
         try:
-            print("🧹 CLEANUP LOOP RUNNING")
             cleanup_pending_files()
         except Exception as e:
             print("Cleanup error:", e)
