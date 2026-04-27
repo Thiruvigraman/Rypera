@@ -34,6 +34,8 @@ from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
 from commands.upload_movie import handle_upload
+from commands.cmd import handle_cmd
+
 from rate_limiter import is_rate_limited
 
 import time
@@ -194,37 +196,46 @@ def process_update(update):
             return
 
         # ================= COMMANDS =================
-        if text.startswith("/generate_link") and is_admin(user_id):
-            handle_generate_link(chat_id, text, user)
-            return
 
-        if text.startswith("/delete_movie") and is_admin(user_id):
-            handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
-            return
+# 🔒 Only admins
+if is_admin(user_id):
+    
 
-        if text.startswith("/rename_file") and is_admin(user_id):
-            handle_rename(chat_id, text, user)
-            return
+if text == "/cmd":
+    handle_cmd(chat_id)
+    return
 
-        if text.startswith("/announce") and is_admin(user_id):
-            handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
-            return
+if text.startswith("/generate_link"):
+    handle_generate_link(chat_id, text, user)
+    return
 
-        if text == "/stats" and is_admin(user_id):
-            handle_stats(chat_id, user)
-            return
+if text.startswith("/delete_movie"):
+    handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
+    return
 
-        if text == "/top_movies" and is_admin(user_id):
-            handle_top_movies(chat_id, user)
-            return
+if text.startswith("/rename_file"):
+    handle_rename(chat_id, text, user)
+    return
 
-        if text == "/health" and is_admin(user_id):
-            handle_health(chat_id, user)
-            return
+if text.startswith("/announce"):
+    handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
+    return
 
-        if text == "/list_movies" and is_admin(user_id):
-            handle_list_movies(chat_id, user)
-            return
+if text == "/stats":
+    handle_stats(chat_id, user)
+    return
+
+if text == "/top_movies":
+    handle_top_movies(chat_id, user)
+    return
+
+if text == "/health":
+    handle_health(chat_id, user)
+    return
+
+if text == "/list_movies":
+    handle_list_movies(chat_id, user)
+    return
 
         # ================= LOG COMMANDS =================
         if text == "/pause_logs" and is_admin(user_id):
