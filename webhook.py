@@ -66,13 +66,14 @@ def is_frozen():
     return FREEZE_LOGS
 
 def check_auto_unfreeze():
-    global FREEZE_LOGS
+    global FREEZE_LOGS, FREEZE_REASON, FREEZE_UNTIL
 
     if FREEZE_LOGS and FREEZE_UNTIL > 0:
         if time.time() >= FREEZE_UNTIL:
             print("🔥 AUTO UNFREEZE TRIGGERED")
             FREEZE_LOGS = False
-
+            FREEZE_REASON = None
+            FREEZE_UNTIL = 0
 
 # ================= CONFIG =================
 
@@ -180,14 +181,19 @@ def clear_all_logs():
 
 # ================= SEND =================
 
+
 def send_payload(url, payload):
+    # 🚫 HARD STOP
+    if FREEZE_LOGS:
+        return False
+
     try:
         global_throttle()
 
         res = session.post(
             url,
             json=payload,
-            timeout=5,
+            timeout=(3,5),
             headers={"User-Agent": "DiscordBot"}
         )
 
@@ -199,30 +205,34 @@ def send_payload(url, payload):
             except Exception:
                 return {}
 
-        # ✅ FIXED INDENTATION
+        # 🚫 CLOUDFLARE DETECTED
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
             print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
 
-            set_freeze(True, reason="Cloudflare")
-            try:
-                from bot import send_message
-                if ADMIN_ALERT_CHAT_ID:
-                    send_message(
-                        ADMIN_ALERT_CHAT_ID,
-                        "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
-                    )
-            except Exception:
-                pass
+            if not FREEZE_LOGS:
+                set_freeze(True, reason="Cloudflare")
+
+                try:
+                    from bot import send_message
+                    if ADMIN_ALERT_CHAT_ID:
+                        send_message(
+                            ADMIN_ALERT_CHAT_ID,
+                            "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
+                        )
+                except Exception:
+                    pass
 
             time.sleep(5)
             return False
 
+        # ⛔ RATE LIMIT
         if res.status_code == 429:
             retry_after = safe_json().get("retry_after", 2)
             print("RATE LIMITED:", retry_after)
             time.sleep(max(2, retry_after))
             return False
 
+        # ❌ OTHER ERRORS
         if res.status_code >= 400:
             print("DISCORD ERROR:", res.status_code, text[:200])
             time.sleep(1)
