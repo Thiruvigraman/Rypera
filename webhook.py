@@ -237,7 +237,11 @@ def send_payload(url, payload):
 
 # ================= SEND LOGS =================
 
+
 def send_logs(log_type: str, entries: List[dict]):
+    if FREEZE_LOGS:
+        return False
+
     url = webhook_map.get(log_type) or webhook_map["status"]
 
     if not validate_webhook_url(url):
@@ -271,7 +275,11 @@ def send_logs(log_type: str, entries: List[dict]):
 
 # ================= RETRY =================
 
+
 def retry_failed_logs():
+    if FREEZE_LOGS:
+        return
+
     if not FAILED_LOGS:
         return
 
@@ -322,7 +330,6 @@ def log_worker(stop_event=None):
         if stop_event and stop_event.is_set():
             break
 
-        # ✅ FIX INDENT
         check_auto_unfreeze()
 
         if FREEZE_LOGS:
@@ -334,7 +341,6 @@ def log_worker(stop_event=None):
 
         grouped = {}
 
-        # 🔥 SAFE DRAIN (no empty() race)
         while True:
             try:
                 entry = log_queue.get_nowait()
@@ -342,7 +348,6 @@ def log_worker(stop_event=None):
             except Exception:
                 break
 
-        # 🔁 Retry occasionally
         last_retry_time = getattr(log_worker, "_last_retry", 0)
         if time.time() - last_retry_time > 10:
             retry_failed_logs()
@@ -351,10 +356,11 @@ def log_worker(stop_event=None):
         if not grouped:
             continue
 
-        # 🔥 PROCESS ALL (no requeue)
         for log_type, entries in grouped.items():
+            if FREEZE_LOGS:
+                break
+
             try:
-                # split into chunks of 5
                 for i in range(0, len(entries), 5):
                     batch = entries[i:i+5]
                     send_logs(log_type, batch)
@@ -362,7 +368,6 @@ def log_worker(stop_event=None):
             except Exception as e:
                 print("Batch send error:", e)
 
-        # mark all done
         for _ in range(sum(len(v) for v in grouped.values())):
             log_queue.task_done()
 
