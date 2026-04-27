@@ -197,100 +197,100 @@ def process_update(update):
 
         # ================= COMMANDS =================
 
-# 🔒 Only admins
 if is_admin(user_id):
-    
 
-if text == "/cmd":
-    handle_cmd(chat_id)
-    return
+    if text == "/cmd":
+        handle_cmd(chat_id)
+        return
 
-if text.startswith("/generate_link"):
-    handle_generate_link(chat_id, text, user)
-    return
+    if text.startswith("/generate_link"):
+        handle_generate_link(chat_id, text, user)
+        return
 
-if text.startswith("/delete_movie"):
-    handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
-    return
+    if text.startswith("/delete_movie"):
+        handle_delete_movie(chat_id, text, user_id, PENDING_DELETE, user)
+        return
 
-if text.startswith("/rename_file"):
-    handle_rename(chat_id, text, user)
-    return
+    if text.startswith("/rename_file"):
+        handle_rename(chat_id, text, user)
+        return
 
-if text.startswith("/announce"):
-    handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
-    return
+    if text.startswith("/announce"):
+        handle_announcement(chat_id, text, user_id, PENDING_ANNOUNCEMENT, user)
+        return
 
-if text == "/stats":
-    handle_stats(chat_id, user)
-    return
+    if text == "/stats":
+        handle_stats(chat_id, user)
+        return
 
-if text == "/top_movies":
-    handle_top_movies(chat_id, user)
-    return
+    if text == "/top_movies":
+        handle_top_movies(chat_id, user)
+        return
 
-if text == "/health":
-    handle_health(chat_id, user)
-    return
+    if text == "/health":
+        handle_health(chat_id, user)
+        return
 
-if text == "/list_movies":
-    handle_list_movies(chat_id, user)
-    return
+    if text == "/list_movies":
+        handle_list_movies(chat_id, user)
+        return
 
-        # ================= LOG COMMANDS =================
-        if text == "/pause_logs" and is_admin(user_id):
-            set_logging(False)
-            send_message(chat_id, "🛑 Logging paused")
-            return
+    # ================= LOG COMMANDS =================
 
-        if text == "/resume_logs" and is_admin(user_id):
-            set_logging(True)
-            send_message(chat_id, "✅ Logging resumed")
-            return
+    if text == "/pause_logs":
+        set_logging(False)
+        send_message(chat_id, "🛑 Logging paused")
+        return
 
-        if text.startswith("/freeze_logs") and is_admin(user_id):
-            parts = text.split()
-            duration = 3600
+    if text == "/resume_logs":
+        set_logging(True)
+        send_message(chat_id, "✅ Logging resumed")
+        return
 
-            if len(parts) > 1:
-                try:
-                    duration = int(parts[1]) * 60
-                except:
-                    pass
+    if text.startswith("/freeze_logs"):
+        parts = text.split()
+        duration = 3600
 
-            set_freeze(True, duration, reason="Manual")
-            send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
-            return
+        if len(parts) > 1:
+            try:
+                duration = int(parts[1]) * 60
+            except:
+                pass
 
-        if text == "/unfreeze_logs" and is_admin(user_id):
-            set_freeze(False)
-            send_message(chat_id, "🔥 Logs resumed")
-            return
+        set_freeze(True, duration, reason="Manual")
+        send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
+        return
 
-        if text == "/log_status" and is_admin(user_id):
-            status = "ON" if is_logging_enabled() else "OFF"
-            freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
-            queue_size = get_log_queue_size()
-            reason = getattr(webhook, "FREEZE_REASON", None) or "—"
+    if text == "/unfreeze_logs":
+        set_freeze(False)
+        send_message(chat_id, "🔥 Logs resumed")
+        return
 
-            send_message(
-                chat_id,
-                f"📊 Logging: {status}\n"
-                f"🧊 Mode: {freeze}\n"
-                f"📛 Reason: {reason}\n"
-                f"📦 Queue: {queue_size}"
-            )
-            return
-        if text == "/clear_logs" and is_admin(user_id):
-            cleared_queue, failed_count = clear_all_logs()
+    if text == "/log_status":
+        status = "ON" if is_logging_enabled() else "OFF"
+        freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
+        queue_size = get_log_queue_size()
+        reason = getattr(webhook, "FREEZE_REASON", None) or "—"
 
-            send_message(
-                chat_id,
-                f"🧹 Logs cleared\n"
-                f"📦 Queue Cleared: {cleared_queue}\n"
-                f"⚠️ Failed Cleared: {failed_count}"
-            )
-            return
+        send_message(
+            chat_id,
+            f"📊 Logging: {status}\n"
+            f"🧊 Mode: {freeze}\n"
+            f"📛 Reason: {reason}\n"
+            f"📦 Queue: {queue_size}"
+        )
+        return
+
+    if text == "/clear_logs":
+        cleared_queue, failed_count = clear_all_logs()
+
+        send_message(
+            chat_id,
+            f"🧹 Logs cleared\n"
+            f"📦 Queue Cleared: {cleared_queue}\n"
+            f"⚠️ Failed Cleared: {failed_count}"
+        )
+        return
 
         # ================= START =================
         if text.startswith("/start "):
