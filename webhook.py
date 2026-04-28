@@ -183,49 +183,7 @@ def clear_all_logs():
 
 
 def send_payload(url, payload):
-    if FREEZE_LOGS:
-        return False
-
-    try:
-        global_throttle()
-
-        res = session.post(
-            url,
-            json=payload,
-            timeout=(3, 5),
-            headers={"User-Agent": "DiscordBot"}
-        )
-
-        text = res.text.strip()
-
-        # 🚫 CLOUDFLARE DETECTED 
-        if "cloudflare" in text.lower() or "error 1015" in text.lower():
-            print("🚫 Cloudflare detected — skipping log")
-            return False
-
-        # ⛔ RATE LIMIT
-        if res.status_code == 429:
-            try:
-                retry_after = res.json().get("retry_after", 2)
-            except Exception:
-                retry_after = 2
-
-            print("RATE LIMITED:", retry_after)
-            time.sleep(max(2, retry_after))
-            return False
-
-        # ❌ OTHER ERRORS
-        if res.status_code >= 400:
-            print("DISCORD ERROR:", res.status_code, text[:200])
-            time.sleep(1)
-            return False
-
-        print("✅ SENT OK")
-        return True
-
-    except Exception as e:
-        print("SEND ERROR:", str(e))
-        return False
+    return False
 
 # ================= SEND LOGS =================
 
@@ -269,37 +227,7 @@ def send_logs(log_type: str, entries: List[dict]):
 
 
 def retry_failed_logs():
-    if FREEZE_LOGS:
-        return
-
-    if not FAILED_LOGS:
-        return
-
-    with FAILED_LOGS_LOCK:
-        current = FAILED_LOGS[:MAX_RETRY_PER_CYCLE]
-        remaining = FAILED_LOGS[MAX_RETRY_PER_CYCLE:]
-
-    retry_failed = []
-
-    for entry in current:
-        entry["_retries"] = entry.get("_retries", 0)
-
-        url = webhook_map.get(entry.get("log_type"), webhook_map["status"])
-
-        if entry.get("log_type") == "access":
-            success = send_payload(url, {"content": build_access_text(entry)})
-        else:
-            success = send_payload(url, build_embed(entry.get("log_type"), [entry]))
-
-        if not success:
-            retry_failed.append(entry)
-
-        time.sleep(0.4)
-
-    with FAILED_LOGS_LOCK:
-        FAILED_LOGS.clear()
-        FAILED_LOGS.extend(remaining)
-        FAILED_LOGS.extend(retry_failed)
+    return
 
 # ================= FAILED =================
 
@@ -322,44 +250,14 @@ def log_worker(stop_event=None):
         if stop_event and stop_event.is_set():
             break
 
-        if FREEZE_LOGS:
+        if not LOGGING_ENABLED:
             time.sleep(5)
             continue
 
-        interval = 3 if log_queue.qsize() > 100 else 5
-        time.sleep(interval)
-
-        grouped = {}
-
-        while True:
-            try:
-                entry = log_queue.get_nowait()
-                grouped.setdefault(entry["log_type"], []).append(entry)
-            except Exception:
-                break
-
-        last_retry_time = getattr(log_worker, "_last_retry", 0)
-        if time.time() - last_retry_time > 10:
-            retry_failed_logs()
-            log_worker._last_retry = time.time()
-
-        if not grouped:
-            continue
-
-        for log_type, entries in grouped.items():
-            if FREEZE_LOGS:
-                break
-
-            try:
-                for i in range(0, len(entries), 5):
-                    batch = entries[i:i+5]
-                    send_logs(log_type, batch)
-
-            except Exception as e:
-                print("Batch send error:", e)
-
-        for _ in range(sum(len(v) for v in grouped.values())):
-            log_queue.task_done()
+        try:
+            time.sleep(5)
+        except Exception as e:
+            print("Worker error:", str(e))
 
 # ================= MAIN =================
 
