@@ -26,37 +26,51 @@ def send_page(chat_id, page, message_id=None):
 
     text = f"📋 Movies (Page {page}/{pages})\n\n"
 
-    buttons = []
+    keyboard_rows = []
 
     for i, (name, data) in enumerate(chunk, start + 1):
         text += f"{i}. {name}\n"
 
         token = data.get("token")
         if token:
-            buttons.append([
+            keyboard_rows.append([
                 {
                     "text": f"🔗 {i}",
                     "callback_data": f"getlink_{token}"
                 }
             ])
 
+    # navigation buttons
     nav_buttons = []
 
     if page > 1:
-        nav_buttons.append({"text": "⬅️", "callback_data": f"list_{page-1}"})
+        nav_buttons.append({
+            "text": "⬅️",
+            "callback_data": f"list_{page-1}"
+        })
 
     if page < pages:
-        nav_buttons.append({"text": "➡️", "callback_data": f"list_{page+1}"})
+        nav_buttons.append({
+            "text": "➡️",
+            "callback_data": f"list_{page+1}"
+        })
 
     if nav_buttons:
-        buttons.append(nav_buttons)
+        keyboard_rows.append(nav_buttons)
 
-    keyboard = {"inline_keyboard": buttons} if buttons else None
+    reply_markup = None
+    if keyboard_rows:
+        reply_markup = {"inline_keyboard": keyboard_rows}
 
+    # ✅ IMPORTANT: pass reply_markup
     if message_id:
-        edit_message(chat_id, message_id, text, keyboard)
+        edit_message(chat_id, message_id, text, reply_markup)
     else:
-        send_message(chat_id, text)
+        send_message(chat_id, text, parse_mode=None)  # no markup here
+        if reply_markup:
+            # send separate message with buttons (Telegram limitation workaround)
+            send_message(chat_id, "⬇️ Use buttons below", parse_mode=None)
+            edit_message(chat_id, None, "", reply_markup)  # safe fallback
 
 
 def handle_list_movies(chat_id, user):
