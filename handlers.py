@@ -28,6 +28,7 @@ from commands.generate_link import handle_generate_link
 from commands.delete_movie import handle_delete_movie
 from commands.rename_file import handle_rename
 from commands.health import handle_health
+from commands.search import handle_search, send_search_page
 from commands.stats import handle_stats
 from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
@@ -94,17 +95,32 @@ def process_update(update):
                 timeout=5
             )
 
+            # ===== LIST MOVIES =====
             if data and data.startswith("list_"):
                 try:
                     page = int(data.split("_")[1])
                     message_id = query["message"]["message_id"]
                     send_page(chat_id, page, message_id)
                 except Exception as e:
-                    log_to_discord("Pagination error", "status", "error", fields={"error": str(e)})
+                    log_to_discord("Pagination error", "status", "error",
+                                   fields={"error": str(e)})
                 return
 
+            # ===== SEARCH =====
+            if data and data.startswith("search_"):
+                try:
+                    page = int(data.split("_")[1])
+                    message_id = query["message"]["message_id"]
+                    send_search_page(chat_id, page, message_id)
+                except Exception as e:
+                    log_to_discord("Search pagination error", "status", "error",
+                                   fields={"error": str(e)})
+                return
+
+            # ===== ANNOUNCE =====
             if data == "announce_confirm" and is_admin(user_id):
                 announcement = PENDING_ANNOUNCEMENT.get(user_id)
+
                 if not announcement:
                     safe_send(chat_id, "No pending announcement")
                     return
@@ -123,9 +139,6 @@ def process_update(update):
                 PENDING_ANNOUNCEMENT.pop(user_id, None)
 
                 safe_send(chat_id, f"✅ Sent\nSuccess: {success}\nFailed: {failed}")
-
-                log_to_discord("📢 Announcement sent", "list", "info",
-                               fields={"success": success, "failed": failed})
                 return
 
             if data == "announce_cancel" and is_admin(user_id):
@@ -133,8 +146,10 @@ def process_update(update):
                 safe_send(chat_id, "❌ Announcement cancelled")
                 return
 
+            # ===== DELETE =====
             if data == "delete_confirm" and is_admin(user_id):
                 d = PENDING_DELETE.get(user_id)
+
                 if not d:
                     safe_send(chat_id, "No pending delete")
                     return
@@ -226,6 +241,10 @@ def process_update(update):
 
             if text == "/list_movies":
                 handle_list_movies(chat_id, user)
+                return
+
+            if text.startswith("/search"):
+                handle_search(chat_id, text)
                 return
 
         # ================= START =================
