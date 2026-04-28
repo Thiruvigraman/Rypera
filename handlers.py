@@ -1,6 +1,6 @@
 # file: handlers.py
 
-from config import ADMIN_IDS, BOT_TOKEN
+from config import ADMIN_IDS, BOT_TOKEN, BOT_USERNAME
 from database import (
     add_user,
     get_movie_by_token,
