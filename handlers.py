@@ -21,7 +21,6 @@ from webhook import (
     get_log_queue_size,
     set_freeze,
     is_frozen,
-    
 )
 
 from bot import send_message, send_file
@@ -33,7 +32,7 @@ from commands.stats import handle_stats
 from commands.top_movies import handle_top_movies
 from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies, send_page
-from commands.upload_movie import handle_upload
+from commands.upload_movie import handle_upload, handle_upload_name
 from commands.cmd import handle_cmd
 
 from rate_limiter import is_rate_limited
@@ -50,8 +49,10 @@ PENDING_ANNOUNCEMENT = {}
 
 ADMIN_ID_SET = set(map(str, ADMIN_IDS))
 
+
 def is_admin(user_id):
     return str(user_id) in ADMIN_ID_SET
+
 
 def get_user_name(user):
     if user.get("username"):
@@ -72,7 +73,6 @@ def process_update(update):
 
         update_id = update.get("update_id")
 
-        # thread-safe dedupe
         with UPDATE_LOCK:
             if update_id in PROCESSED_UPDATES:
                 return
@@ -105,7 +105,6 @@ def process_update(update):
 
             if data == "announce_confirm" and is_admin(user_id):
                 announcement = PENDING_ANNOUNCEMENT.get(user_id)
-
                 if not announcement:
                     safe_send(chat_id, "No pending announcement")
                     return
@@ -125,12 +124,8 @@ def process_update(update):
 
                 safe_send(chat_id, f"✅ Sent\nSuccess: {success}\nFailed: {failed}")
 
-                log_to_discord(
-                    "📢 Announcement sent",
-                    "list",
-                    "info",
-                    fields={"success": success, "failed": failed}
-                )
+                log_to_discord("📢 Announcement sent", "list", "info",
+                               fields={"success": success, "failed": failed})
                 return
 
             if data == "announce_cancel" and is_admin(user_id):
@@ -140,7 +135,6 @@ def process_update(update):
 
             if data == "delete_confirm" and is_admin(user_id):
                 d = PENDING_DELETE.get(user_id)
-
                 if not d:
                     safe_send(chat_id, "No pending delete")
                     return
@@ -149,13 +143,6 @@ def process_update(update):
                 PENDING_DELETE.pop(user_id, None)
 
                 safe_send(chat_id, f"🗑 Deleted: {d['movie']}")
-
-                log_to_discord(
-                    "Movie deleted",
-                    "list",
-                    "info",
-                    fields={"movie": d["movie"]}
-                )
                 return
 
             if data == "delete_cancel" and is_admin(user_id):
@@ -172,32 +159,37 @@ def process_update(update):
         user = msg["from"]
         user_id = user["id"]
 
-        # ✅ SET ADMIN ALERT TARGET
         if is_admin(user_id):
             webhook.ADMIN_ALERT_CHAT_ID = chat_id
 
+        # 📥 upload
         if "document" in msg and is_admin(user_id):
             handle_upload(chat_id, msg, user)
             return
 
+        # rate limit
         if not is_admin(user_id) and is_rate_limited(user_id):
-           return
+            return
 
         text = (msg.get("text") or "").strip()
 
+        # ✅ upload name handler
+        if is_admin(user_id) and text and not text.startswith("/"):
+            if handle_upload_name(chat_id, text, user):
+                return
+
+        # register user
         if not is_admin(user_id):
             add_user(user_id, user.get("first_name", "User"))
 
         if not text and not is_admin(user_id):
             return
 
-
         if not is_db_available():
             safe_send(chat_id, "⚠️ Database unavailable")
             return
 
-# ================= COMMANDS =================
-
+        # ================= COMMANDS =================
         if is_admin(user_id):
 
             if text == "/cmd":
@@ -236,66 +228,7 @@ def process_update(update):
                 handle_list_movies(chat_id, user)
                 return
 
-            # ================= LOG COMMANDS =================
-
-            if text == "/pause_logs":
-                set_logging(False)
-                send_message(chat_id, "🛑 Logging paused")
-                return
-
-            if text == "/resume_logs":
-                set_logging(True)
-                send_message(chat_id, "✅ Logging resumed")
-                return
-
-            if text.startswith("/freeze_logs"):
-                parts = text.split()
-                duration = 3600
-
-                if len(parts) > 1:
-                    try:
-                        duration = int(parts[1]) * 60
-                    except:
-                        pass
-
-                set_freeze(True, duration, reason="Manual")
-                send_message(chat_id, f"🧊 Logs frozen for {duration//60} min")
-                return
-
-            if text == "/unfreeze_logs":
-                set_freeze(False)
-                send_message(chat_id, "🔥 Logs resumed")
-                return
-
-            if text == "/log_status":
-                status = "ON" if is_logging_enabled() else "OFF"
-                freeze = "FROZEN ❄️" if is_frozen() else "ACTIVE 🔥"
-                queue_size = get_log_queue_size()
-                reason = getattr(webhook, "FREEZE_REASON", None) or "—"
-
-                send_message(
-                    chat_id,
-                    f"📊 Logging: {status}\n"
-                    f"🧊 Mode: {freeze}\n"
-                    f"📛 Reason: {reason}\n"
-                    f"📦 Queue: {queue_size}"
-                )
-                return
-
-            if text == "/clear_logs":
-                cleared_queue, failed_count = clear_all_logs()
-
-                send_message(
-                    chat_id,
-                    f"🧹 Logs cleared\n"
-                    f"📦 Queue Cleared: {cleared_queue}\n"
-                    f"⚠️ Failed Cleared: {failed_count}"
-                )
-                return
-
-
         # ================= START =================
-
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
 
@@ -305,26 +238,6 @@ def process_update(update):
                 send_file(chat_id, movie["file_id"])
                 increment_movie_access(movie["name"])
                 save_access_log(user_id, movie["name"])
-
-                log_to_discord(
-                    "🎬 File Accessed",
-                    "access",
-                    "info",
-                    fields={
-                        "User": get_user_name(user),
-                        "User ID": user_id,
-                        "Movie": movie["name"]
-                    }
-                )
-                return
-
-            name = query.replace("_", " ")
-            movies = load_movies_cached()
-
-            if name in movies:
-                send_file(chat_id, movies[name]["file_id"])
-                increment_movie_access(name)
-                save_access_log(user_id, name)
                 return
 
             safe_send(chat_id, "❌ Invalid or expired link")
