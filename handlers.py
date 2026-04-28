@@ -48,10 +48,10 @@ UPDATE_LOCK = Lock()
 PENDING_DELETE = {}
 PENDING_ANNOUNCEMENT = {}
 
+ADMIN_ID_SET = set(map(str, ADMIN_IDS))
 
 def is_admin(user_id):
-    return user_id in ADMIN_IDS
-
+    return str(user_id) in ADMIN_ID_SET
 
 def get_user_name(user):
     if user.get("username"):
@@ -180,22 +180,23 @@ def process_update(update):
             handle_upload(chat_id, msg, user)
             return
 
-        if is_rate_limited(user_id):
-            return
+        if not is_admin(user_id) and is_rate_limited(user_id):
+           return
 
-        text = msg.get("text", "")
+        text = (msg.get("text") or "").strip()
+
+        if not is_admin(user_id):
+            add_user(user_id, user.get("first_name", "User"))
 
         if not text and not is_admin(user_id):
             return
 
-        if not is_admin(user_id):
-            add_user(user_id, user.get("first_name", "User"))
 
         if not is_db_available():
             safe_send(chat_id, "⚠️ Database unavailable")
             return
 
-        # ================= COMMANDS =================
+# ================= COMMANDS =================
 
         if is_admin(user_id):
 
@@ -292,7 +293,9 @@ def process_update(update):
                 )
                 return
 
+
         # ================= START =================
+
         if text.startswith("/start "):
             query = text.split(" ", 1)[1]
 
