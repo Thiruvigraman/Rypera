@@ -18,8 +18,13 @@ def handle_rename(chat_id, text, user):
 
     movies = load_movies()
 
+    # ❌ old not found
     if old_name not in movies:
         return send_message(chat_id, "❌ Movie not found")
+
+    # 🚫 duplicate protection (NEW FIX)
+    if new_name in movies:
+        return send_message(chat_id, "❌ Name already exists\nChoose different name")
 
     success = rename_movie(old_name, new_name)
 
