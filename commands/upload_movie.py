@@ -10,11 +10,12 @@ from config import BOT_USERNAME
 from utils import get_username
 
 PENDING_UPLOAD = {}
-TIMEOUT = 60  # seconds
+TIMEOUT = 60
 
 
 def handle_upload(chat_id, message, user):
     doc = message.get("document")
+
     if not doc:
         return send_message(chat_id, "Send a file to upload")
 
@@ -27,10 +28,11 @@ def handle_upload(chat_id, message, user):
 
     send_message(chat_id, "📥 File received\n\nSend movie name within 60 sec")
 
-    # auto-expire
     def expire():
         time.sleep(TIMEOUT)
+
         data = PENDING_UPLOAD.get(chat_id)
+
         if data and time.time() - data["time"] >= TIMEOUT:
             PENDING_UPLOAD.pop(chat_id, None)
             send_message(chat_id, "⏰ Upload cancelled (timeout)")
@@ -42,9 +44,9 @@ def handle_upload_name(chat_id, text, user):
     data = PENDING_UPLOAD.get(chat_id)
 
     if not data:
-        return False  # not handled
+        return False
 
-    # timeout check
+    # timeout safety
     if time.time() - data["time"] > TIMEOUT:
         PENDING_UPLOAD.pop(chat_id, None)
         send_message(chat_id, "⏰ Upload expired, send file again")
@@ -52,10 +54,13 @@ def handle_upload_name(chat_id, text, user):
 
     movie_name = text.strip()
 
-    # duplicate check
     movies = load_movies()
+
+    # duplicate protection (FIXED)
     if movie_name in movies:
         send_message(chat_id, "❌ Movie name already exists\nTry different name")
+
+        PENDING_UPLOAD.pop(chat_id, None)  # prevent stuck state
         return True
 
     token = save_movie(movie_name, data["file_id"])
@@ -70,8 +75,7 @@ def handle_upload_name(chat_id, text, user):
 
     send_message(
         chat_id,
-        f"✅ Saved file name : {movie_name}\n"
-        f"Generated link : 🔗 {link}"
+        f"✅ Saved file name : {movie_name}\nGenerated link : 🔗 {link}"
     )
 
     log_to_discord(
