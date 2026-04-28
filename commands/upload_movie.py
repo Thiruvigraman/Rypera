@@ -8,27 +8,32 @@ from utils import get_username
 
 
 def handle_upload(chat_id, message, user):
-    doc = message.get("document")
+    try:
+        doc = message.get("document")
 
-    if not doc:
-        return send_message(chat_id, "Send a file to upload")
+        if not doc:
+            send_message(chat_id, "❌ Send a file")
+            return
 
-    file_id = doc["file_id"]
-    name = doc.get("file_name", "Unnamed")
+        file_id = doc["file_id"]
+        name = doc.get("file_name", "Unnamed")
 
-    token = save_movie(name, file_id)
+        token = save_movie(name, file_id)
 
-    if not token:
-        return send_message(chat_id, "❌ Save failed")
+        if not token:
+            send_message(chat_id, "❌ Save failed")
+            return
 
-    link = f"https://t.me/{BOT_USERNAME}?start={token}"
-    send_message(chat_id, f"✅ Saved\n\n📁 {name}\n🔗 {link}")
+        link = f"https://t.me/{BOT_USERNAME}?start={token}"
 
-    username = get_username(user)
+        send_message(chat_id, f"✅ Saved\n\n📁 {name}\n🔗 {link}")
 
-    log_to_discord(
-        "📤 Movie Uploaded",
-        "list",
-        "info",
-        fields={"admin": username, "name": name}
-    )
+        log_to_discord(
+            "📤 Movie Uploaded",
+            "list",
+            "info",
+            fields={"admin": get_username(user), "name": name}
+        )
+
+    except Exception:
+        send_message(chat_id, "❌ Upload failed")
