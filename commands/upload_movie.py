@@ -1,51 +1,76 @@
 # file: commands/upload_movie.py
 
-from database import save_movie
+import time
+import threading
+
+from database import save_movie, load_movies
 from bot import send_message
 from webhook import log_to_discord
 from config import BOT_USERNAME
 from utils import get_username
 
-PENDING_UPLOAD = {}  # user_id → file_id
+PENDING_UPLOAD = {}
+TIMEOUT = 60  # seconds
 
 
 def handle_upload(chat_id, message, user):
     doc = message.get("document")
-
     if not doc:
-        return send_message(chat_id, "❌ Send a file")
+        return send_message(chat_id, "Send a file to upload")
 
     file_id = doc["file_id"]
-    user_id = user["id"]
 
-    # store file temporarily
-    PENDING_UPLOAD[user_id] = file_id
+    PENDING_UPLOAD[chat_id] = {
+        "file_id": file_id,
+        "time": time.time()
+    }
 
-    send_message(
-        chat_id,
-        "📥 File received\n\nNow send movie name:"
-    )
+    send_message(chat_id, "📥 File received\n\nSend movie name within 60 sec")
+
+    # auto-expire
+    def expire():
+        time.sleep(TIMEOUT)
+        data = PENDING_UPLOAD.get(chat_id)
+        if data and time.time() - data["time"] >= TIMEOUT:
+            PENDING_UPLOAD.pop(chat_id, None)
+            send_message(chat_id, "⏰ Upload cancelled (timeout)")
+
+    threading.Thread(target=expire, daemon=True).start()
 
 
 def handle_upload_name(chat_id, text, user):
-    user_id = user["id"]
+    data = PENDING_UPLOAD.get(chat_id)
 
-    if user_id not in PENDING_UPLOAD:
-        return False  # not in upload flow
+    if not data:
+        return False  # not handled
 
-    file_id = PENDING_UPLOAD.pop(user_id)
-    name = text.strip()
+    # timeout check
+    if time.time() - data["time"] > TIMEOUT:
+        PENDING_UPLOAD.pop(chat_id, None)
+        send_message(chat_id, "⏰ Upload expired, send file again")
+        return True
 
-    token = save_movie(name, file_id)
+    movie_name = text.strip()
+
+    # duplicate check
+    movies = load_movies()
+    if movie_name in movies:
+        send_message(chat_id, "❌ Movie name already exists\nTry different name")
+        return True
+
+    token = save_movie(movie_name, data["file_id"])
 
     if not token:
-        return send_message(chat_id, "❌ Save failed")
+        send_message(chat_id, "❌ Save failed")
+        return True
+
+    PENDING_UPLOAD.pop(chat_id, None)
 
     link = f"https://t.me/{BOT_USERNAME}?start={token}"
 
     send_message(
         chat_id,
-        f"✅ Saved file name : {name}\n"
+        f"✅ Saved file name : {movie_name}\n"
         f"Generated link : 🔗 {link}"
     )
 
@@ -55,7 +80,7 @@ def handle_upload_name(chat_id, text, user):
         "info",
         fields={
             "admin": get_username(user),
-            "name": name
+            "name": movie_name
         }
     )
 
