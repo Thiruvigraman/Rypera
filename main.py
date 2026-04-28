@@ -264,12 +264,7 @@ def handle_webhook():
     global LAST_REQUEST_TIME
 
     try:
-        now = time.time()
-        if now - LAST_REQUEST_TIME < 0.02:
-            return jsonify({"status": "rate_limited"}), 200
-
-        LAST_REQUEST_TIME = now
-
+        
         update = request.get_json(silent=True)
 
         if not isinstance(update, dict):
@@ -282,19 +277,9 @@ def handle_webhook():
 
             pass
 
-        # ✅ safe thread wrapper
-        def safe_process(update):
-            try:
-                process_update(update)
-            except Exception as e:
-                log_to_discord(
-                    "Thread crash",
-                    "status",
-                    "error",
-                    fields={"error": str(e)}
-                )
+        print("UPDATE RECEIVED:", update)
 
-        EXECUTOR.submit(safe_process, update)
+        process_update(update)
 
         return jsonify(success=True), 200
 
@@ -305,6 +290,7 @@ def handle_webhook():
             "error",
             fields={"error": str(e)}
         )
+        print("WEBHOOK ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 # ================= SHUTDOWN =================
