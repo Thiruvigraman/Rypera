@@ -118,68 +118,80 @@ def edit_message(chat_id, message_id, text, reply_markup=None):
         print("EDIT ERROR:", str(e))
 
 # ================= STORAGE =================
-def forward_file_to_storage(file_id):
+def forward_file_to_storage(file_id, username=None, movie_name=None, count=None):
     if not STORAGE_CHAT_ID or not file_id:
         return None
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
-    payload = {'chat_id': STORAGE_CHAT_ID, 'document': file_id}
+
+    caption_parts = []
+
+    if username:
+        caption_parts.append(f"👤 {username}")
+
+    if movie_name:
+        caption_parts.append(f"🎬 {movie_name}")
+
+    if count is not None:
+        caption_parts.append(f"🔢 Access: {count}")
+
+    caption = "\n".join(caption_parts) if caption_parts else None
+
+    payload = {
+        "chat_id": STORAGE_CHAT_ID,
+        "document": file_id
+    }
+
+    if caption:
+        payload["caption"] = caption
 
     try:
         res = session.post(url, json=payload, timeout=10)
         data = res.json()
 
-        if data.get('ok'):
-            log_to_discord("📦 File stored", "list", "info")
-            return data['result']['message_id']
+        if data.get("ok"):
+            return data["result"]["message_id"]
 
-    except Exception as e:
+    except Exception:
         log_to_discord("Storage error", "status", "error")
 
     return None
 
-
 # ================= SEND FILE =================
 
-
-def send_file(chat_id, file_id):
+def send_file(chat_id, file_id, username=None, movie_name=None, count=None):
     if not chat_id or not file_id:
         return {"ok": False}
 
     if is_duplicate_send(chat_id, file_id):
-        return {"ok": False, "duplicate": True}
+        return {"ok": False}
 
     if is_rate_limited(chat_id):
-        return {"ok": False, "rate_limited": True}
+        return {"ok": False}
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
 
     threading.Thread(
         target=forward_file_to_storage,
-        args=(file_id,),
+        args=(file_id, username, movie_name, count),
         daemon=True
     ).start()
 
     payload = {
-        'chat_id': chat_id,
-        'document': file_id
+        "chat_id": chat_id,
+        "document": file_id
     }
 
     try:
         res = session.post(url, json=payload, timeout=10)
         data = res.json()
 
-        if not data.get('ok'):
-            log_to_discord(
-                "Send file failed",
-                "status",
-                "error",
-                fields={"chat_id": chat_id}
-            )
+        if not data.get("ok"):
+            log_to_discord("Send file failed", "status", "error",
+                           fields={"chat_id": chat_id})
             return data
 
-        
-        file_message_id = data['result']['message_id']
+        file_message_id = data["result"]["message_id"]
 
         warning_text = (
             "⚠️ IMPORTANT\n\n"
@@ -187,27 +199,24 @@ def send_file(chat_id, file_id):
             "📌 Forward it to another chat to keep it permanently."
         )
 
-        # retry send warning
         warning_message_id = None
 
         for _ in range(3):
             warning_response = send_message(chat_id, warning_text)
 
             if warning_response and warning_response.get("ok"):
-                warning_message_id = warning_response['result']['message_id']
+                warning_message_id = warning_response["result"]["message_id"]
                 break
 
             time.sleep(0.5)
 
-        # ✅ ALWAYS SAVE
         save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
 
         return data
 
-    except Exception as e:
+    except Exception:
         log_to_discord("Send file crash", "status", "error")
-        return {"ok": False}            
-
+        return {"ok": False}
         
 
 
