@@ -8,6 +8,8 @@ from utils import get_username
 PER_PAGE = 10
 
 
+# ================= LIST PAGE =================
+
 def send_page(chat_id, page, message_id=None):
     movies = list(load_movies().items())
 
@@ -58,27 +60,10 @@ def send_page(chat_id, page, message_id=None):
     if nav_buttons:
         keyboard_rows.append(nav_buttons)
 
-    reply_markup = None
-    if keyboard_rows:
-        reply_markup = {"inline_keyboard": keyboard_rows}
+    reply_markup = {"inline_keyboard": keyboard_rows} if keyboard_rows else None
 
-    # ✅ IMPORTANT: pass reply_markup
+    
     if message_id:
         edit_message(chat_id, message_id, text, reply_markup)
     else:
-        send_message(chat_id, text, parse_mode=None)  # no markup here
-        if reply_markup:
-            # send separate message with buttons (Telegram limitation workaround)
-            send_message(chat_id, "⬇️ Use buttons below", parse_mode=None)
-            edit_message(chat_id, None, "", reply_markup)  # safe fallback
-
-
-def handle_list_movies(chat_id, user):
-    send_page(chat_id, 1)
-
-    log_to_discord(
-        "📋 Movie List Opened",
-        "list",
-        "info",
-        fields={"admin": get_username(user)}
-    )
+        send_message(chat_id, text, reply_markup=reply_markup)
