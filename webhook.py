@@ -31,7 +31,7 @@ session = requests.Session()
 
 # ================= GLOBAL LOG SWITCH =================
 
-LOGGING_ENABLED = True
+LOGGING_ENABLED = False
 FREEZE_LOGS = False
 FREEZE_UNTIL = 0
 FREEZE_DURATION = 3600
@@ -183,7 +183,6 @@ def clear_all_logs():
 
 
 def send_payload(url, payload):
-    # 🚫 HARD STOP
     if FREEZE_LOGS:
         return False
 
@@ -193,41 +192,24 @@ def send_payload(url, payload):
         res = session.post(
             url,
             json=payload,
-            timeout=(3,5),
+            timeout=(3, 5),
             headers={"User-Agent": "DiscordBot"}
         )
 
         text = res.text.strip()
 
-        def safe_json():
-            try:
-                return res.json()
-            except Exception:
-                return {}
-
-        # 🚫 CLOUDFLARE DETECTED
+        # 🚫 CLOUDFLARE DETECTED 
         if "cloudflare" in text.lower() or "error 1015" in text.lower():
-            print("🚫 CLOUDFLARE BLOCK → FREEZING LOGS")
-
-            if not FREEZE_LOGS:
-                set_freeze(True, reason="Cloudflare")
-
-                try:
-                    from bot import send_message
-                    if ADMIN_ALERT_CHAT_ID:
-                        send_message(
-                            ADMIN_ALERT_CHAT_ID,
-                            "🚫 Cloudflare detected!\n🧊 Logs frozen automatically for 1 hour."
-                        )
-                except Exception:
-                    pass
-
-            time.sleep(5)
+            print("🚫 Cloudflare detected — skipping log")
             return False
 
         # ⛔ RATE LIMIT
         if res.status_code == 429:
-            retry_after = safe_json().get("retry_after", 2)
+            try:
+                retry_after = res.json().get("retry_after", 2)
+            except Exception:
+                retry_after = 2
+
             print("RATE LIMITED:", retry_after)
             time.sleep(max(2, retry_after))
             return False
@@ -340,8 +322,6 @@ def log_worker(stop_event=None):
         if stop_event and stop_event.is_set():
             break
 
-        check_auto_unfreeze()
-
         if FREEZE_LOGS:
             time.sleep(5)
             continue
@@ -386,7 +366,7 @@ def log_worker(stop_event=None):
 def log_to_discord(message, log_type="status", severity="info", fields=None, force_flush=False):
     try:
         # 🚫 HARD STOP
-        if not LOGGING_ENABLED or FREEZE_LOGS:
+        if not LOGGING_ENABLED:
             return False
 
         entry = {
