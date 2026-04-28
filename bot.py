@@ -48,7 +48,7 @@ def is_duplicate_send(chat_id, file_id):
 
 
 # ================= SEND MESSAGE =================
-def send_message(chat_id, text, parse_mode=None):
+def send_message(chat_id, text, parse_mode=None, reply_markup=None):
     if not chat_id or not text:
         return {"ok": False}
 
@@ -56,10 +56,18 @@ def send_message(chat_id, text, parse_mode=None):
         return {"ok": False, "rate_limited": True}
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    payload = {'chat_id': chat_id, 'text': text}
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
 
     if parse_mode:
-        payload['parse_mode'] = parse_mode
+        payload["parse_mode"] = parse_mode
+
+    # support inline buttons
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
 
     try:
         res = session.post(url, json=payload, timeout=10)
@@ -88,7 +96,6 @@ def send_message(chat_id, text, parse_mode=None):
             fields={"chat_id": chat_id, "error": str(e)}
         )
         return {"ok": False}
-
 # ================= EDIT MESSAGE =================
 
 def edit_message(chat_id, message_id, text, reply_markup=None):
