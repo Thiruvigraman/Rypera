@@ -89,32 +89,56 @@ def process_update(update):
             user_id = query["from"]["id"]
             chat_id = query["message"]["chat"]["id"]
 
+            # answer callback (important)
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
                 json={"callback_query_id": query["id"]},
                 timeout=5
             )
 
-            # ===== LIST MOVIES =====
+            # ===== LIST PAGINATION =====
             if data and data.startswith("list_"):
                 try:
                     page = int(data.split("_")[1])
                     message_id = query["message"]["message_id"]
                     send_page(chat_id, page, message_id)
                 except Exception as e:
-                    log_to_discord("Pagination error", "status", "error",
-                                   fields={"error": str(e)})
+                    log_to_discord(
+                        "Pagination error",
+                        "status",
+                        "error",
+                        fields={"error": str(e)}
+                    )
                 return
 
-            # ===== SEARCH =====
+            # ===== SEARCH PAGINATION =====
             if data and data.startswith("search_"):
                 try:
                     page = int(data.split("_")[1])
                     message_id = query["message"]["message_id"]
                     send_search_page(chat_id, page, message_id)
                 except Exception as e:
-                    log_to_discord("Search pagination error", "status", "error",
-                                   fields={"error": str(e)})
+                    log_to_discord(
+                        "Search pagination error",
+                        "status",
+                        "error",
+                        fields={"error": str(e)}
+                    )
+                return
+
+            # ===== GET LINK BUTTON =====
+            if data and data.startswith("getlink_"):
+                try:
+                    token = data.split("_", 1)[1]
+                    link = f"https://t.me/{BOT_USERNAME}?start={token}"
+                    send_message(chat_id, f"🔗 {link}")
+                except Exception as e:
+                    log_to_discord(
+                        "Get link error",
+                        "status",
+                        "error",
+                        fields={"error": str(e)}
+                    )
                 return
 
             # ===== ANNOUNCE =====
@@ -129,7 +153,7 @@ def process_update(update):
                 success, failed = 0, 0
 
                 for u in users:
-                    res = send_message(u['user_id'], announcement)
+                    res = send_message(u["user_id"], announcement)
                     if res and res.get("ok"):
                         success += 1
                     else:
