@@ -277,7 +277,7 @@ def handle_webhook():
 
             pass
 
-        print("UPDATE RECEIVED:", update)
+        
 
         process_update(update)
 
