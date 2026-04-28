@@ -1,35 +1,46 @@
 # file: commands/rename_file.py
 
-from database import rename_movie
+from database import load_movies, rename_movie
 from bot import send_message
 from webhook import log_to_discord
+from config import BOT_USERNAME
 from utils import get_username
 
 
 def handle_rename(chat_id, text, user):
-    try:
-        parts = text.split(maxsplit=2)
-        if len(parts) < 3:
-            send_message(chat_id, "❌ Usage: /rename_file <old> <new>")
-            return
+    parts = text.split(maxsplit=2)
 
-        old_name, new_name = parts[1], parts[2]
+    if len(parts) < 3:
+        return send_message(chat_id, "❌ Usage:\n/rename_file old new")
 
-        if rename_movie(old_name, new_name):
-            send_message(chat_id, f"✅ Renamed:\n{old_name} → {new_name}")
+    old_name = parts[1].strip()
+    new_name = parts[2].strip()
 
-            log_to_discord(
-                "✏️ Movie Renamed",
-                "list",
-                "info",
-                fields={
-                    "admin": get_username(user),
-                    "old": old_name,
-                    "new": new_name
-                }
-            )
-        else:
-            send_message(chat_id, "❌ Rename failed")
+    movies = load_movies()
 
-    except Exception:
-        send_message(chat_id, "❌ Rename error")
+    if old_name not in movies:
+        return send_message(chat_id, "❌ Movie not found")
+
+    success = rename_movie(old_name, new_name)
+
+    if not success:
+        return send_message(chat_id, "❌ Rename failed")
+
+    token = movies[old_name].get("token")
+    link = f"https://t.me/{BOT_USERNAME}?start={token}" if token else "No link"
+
+    send_message(
+        chat_id,
+        f"✅ Renamed\n\n🎬 {old_name}\n➡️ {new_name}\n🔗 {link}"
+    )
+
+    log_to_discord(
+        "✏️ Movie Renamed",
+        "list",
+        "info",
+        fields={
+            "admin": get_username(user),
+            "old": old_name,
+            "new": new_name
+        }
+    )
