@@ -237,15 +237,20 @@ def process_update(update):
             if movie:
                 increment_movie_access(movie["name"])
 
-count = movie.get("access_count", 0) + 1
+                # fetch updated count safely
+                updated_movie = get_movie_by_token(query)
+                count = 1
+                if updated_movie and "access_count" in updated_movie:
+                    count = updated_movie["access_count"]
 
-send_file(
-    chat_id,
-    movie["file_id"],
-    get_user_name(user),
-    movie["name"],
-    count
-)
+                send_file(
+                    chat_id,
+                    movie["file_id"],
+                    get_user_name(user),
+                    movie["name"],
+                    count
+                )
+
                 save_access_log(user_id, movie["name"])
                 return
 
