@@ -1,8 +1,6 @@
 # file: commands/list_movies.py
 
-import requests
 from database import load_movies
-from config import BOT_TOKEN
 from bot import edit_message, send_message
 from webhook import log_to_discord
 from utils import get_username
@@ -28,20 +26,33 @@ def send_page(chat_id, page, message_id=None):
 
     text = f"📋 Movies (Page {page}/{pages})\n\n"
 
-    for i, (name, _) in enumerate(chunk, start + 1):
-        text += f"{i}. {name}\n"
-
     buttons = []
 
+    for i, (name, data) in enumerate(chunk, start + 1):
+        text += f"{i}. {name}\n"
+
+        token = data.get("token")
+        if token:
+            buttons.append([
+                {
+                    "text": f"🔗 {i}",
+                    "callback_data": f"getlink_{token}"
+                }
+            ])
+
+    nav_buttons = []
+
     if page > 1:
-        buttons.append({"text": "⬅️", "callback_data": f"list_{page-1}"})
+        nav_buttons.append({"text": "⬅️", "callback_data": f"list_{page-1}"})
 
     if page < pages:
-        buttons.append({"text": "➡️", "callback_data": f"list_{page+1}"})
+        nav_buttons.append({"text": "➡️", "callback_data": f"list_{page+1}"})
 
-    keyboard = {"inline_keyboard": [buttons]} if buttons else None
+    if nav_buttons:
+        buttons.append(nav_buttons)
 
-    # ✅ EDIT EXISTING MESSAGE
+    keyboard = {"inline_keyboard": buttons} if buttons else None
+
     if message_id:
         edit_message(chat_id, message_id, text, keyboard)
     else:
