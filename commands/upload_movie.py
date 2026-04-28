@@ -6,6 +6,8 @@ from webhook import log_to_discord
 from config import BOT_USERNAME
 from utils import get_username
 
+PENDING_UPLOAD = {}  # user_id → file_id
+
 
 def handle_upload(chat_id, message, user):
     doc = message.get("document")
@@ -14,18 +16,25 @@ def handle_upload(chat_id, message, user):
         return send_message(chat_id, "❌ Send a file")
 
     file_id = doc["file_id"]
+    user_id = user["id"]
 
-    # ✅ MANUAL NAME (caption required)
-    caption = message.get("caption")
+    # store file temporarily
+    PENDING_UPLOAD[user_id] = file_id
 
-    if not caption:
-        return send_message(
-            chat_id,
-            "❌ Send file with caption\n\nExample:\n`One Piece 1159 720p`",
-            parse_mode="Markdown"
-        )
+    send_message(
+        chat_id,
+        "📥 File received\n\nNow send movie name:"
+    )
 
-    name = caption.strip()
+
+def handle_upload_name(chat_id, text, user):
+    user_id = user["id"]
+
+    if user_id not in PENDING_UPLOAD:
+        return False  # not in upload flow
+
+    file_id = PENDING_UPLOAD.pop(user_id)
+    name = text.strip()
 
     token = save_movie(name, file_id)
 
@@ -36,7 +45,8 @@ def handle_upload(chat_id, message, user):
 
     send_message(
         chat_id,
-        f"✅ Saved\n\n🎬 {name}\n🔗 {link}"
+        f"✅ Saved file name : {name}\n"
+        f"Generated link : 🔗 {link}"
     )
 
     log_to_discord(
@@ -48,3 +58,5 @@ def handle_upload(chat_id, message, user):
             "name": name
         }
     )
+
+    return True
