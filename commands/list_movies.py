@@ -8,8 +8,6 @@ from utils import get_username
 PER_PAGE = 10
 
 
-# ================= LIST PAGE =================
-
 def send_page(chat_id, page, message_id=None):
     movies = list(load_movies().items())
 
@@ -42,7 +40,6 @@ def send_page(chat_id, page, message_id=None):
                 }
             ])
 
-    # navigation buttons
     nav_buttons = []
 
     if page > 1:
@@ -62,8 +59,18 @@ def send_page(chat_id, page, message_id=None):
 
     reply_markup = {"inline_keyboard": keyboard_rows} if keyboard_rows else None
 
-    
     if message_id:
         edit_message(chat_id, message_id, text, reply_markup)
     else:
         send_message(chat_id, text, reply_markup=reply_markup)
+
+
+def handle_list_movies(chat_id, user):
+    send_page(chat_id, 1)
+
+    log_to_discord(
+        "📋 Movie List Opened",
+        "list",
+        "info",
+        fields={"admin": get_username(user)}
+    )
