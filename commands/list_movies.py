@@ -9,14 +9,15 @@ PER_PAGE = 10
 
 
 def send_page(chat_id, page, message_id=None):
-    movies = list(load_movies().items())
+    movies_dict = load_movies()
+    movies = list(movies_dict.items())
 
     if not movies:
         send_message(chat_id, "No movies available")
         return
 
     total = len(movies)
-    pages = (total // PER_PAGE) + (1 if total % PER_PAGE else 0)
+    pages = (total + PER_PAGE - 1) // PER_PAGE
 
     if page < 1 or page > pages:
         return
@@ -26,43 +27,49 @@ def send_page(chat_id, page, message_id=None):
 
     text = f"📋 Movies (Page {page}/{pages})\n\n"
 
-    keyboard_rows = []
+    keyboard = []
 
-    for i, (name, data) in enumerate(chunk, start + 1):
-        text += f"{i}. {name}\n"
+    for idx, (name, data) in enumerate(chunk, start=start + 1):
+        text += f"{idx}. {name}\n"
 
         token = data.get("token")
         if token:
-            keyboard_rows.append([
+            keyboard.append([
                 {
-                    "text": f"🔗 {i}",
+                    "text": f"🔗 {idx}",
                     "callback_data": f"getlink_{token}"
                 }
             ])
 
-    nav_buttons = []
+    # navigation
+    nav = []
 
     if page > 1:
-        nav_buttons.append({
+        nav.append({
             "text": "⬅️",
             "callback_data": f"list_{page-1}"
         })
 
     if page < pages:
-        nav_buttons.append({
+        nav.append({
             "text": "➡️",
             "callback_data": f"list_{page+1}"
         })
 
-    if nav_buttons:
-        keyboard_rows.append(nav_buttons)
+    if nav:
+        keyboard.append(nav)
 
-    reply_markup = {"inline_keyboard": keyboard_rows} if keyboard_rows else None
+    reply_markup = {"inline_keyboard": keyboard} if keyboard else None
 
+    # 🔥 ALWAYS attach buttons to SAME message
     if message_id:
         edit_message(chat_id, message_id, text, reply_markup)
     else:
-        send_message(chat_id, text, reply_markup=reply_markup)
+        res = send_message(chat_id, text, reply_markup=reply_markup)
+
+        # safety: if Telegram returns message_id, we can reuse later
+        if res and res.get("ok"):
+            return res["result"]["message_id"]
 
 
 def handle_list_movies(chat_id, user):
