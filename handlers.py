@@ -29,6 +29,7 @@ from commands.upload_movie import (
     handle_upload,
     handle_upload_name
 )
+from commands.create_groups import handle_create_groups
 
 from config import (
     ADMIN_IDS,
