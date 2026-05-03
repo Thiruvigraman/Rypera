@@ -132,34 +132,24 @@ def get_all_groups():
 
 # ================= SEARCH =================
 
-def search_groups(query):
+def search_groups(query, limit=20):
     if not MONGO_AVAILABLE:
         return []
 
-    query = query.lower().strip()
-
-    results = []
-
-    cursor = groups_collection.find({})
-
-    for group in cursor:
-        title = (
-            group.get("title", "")
-            .lower()
-            .strip()
+    try:
+        return list(
+            groups_collection.find(
+                {
+                    "title": {
+                        "$regex": query,
+                        "$options": "i"
+                    }
+                }
+            ).limit(limit)
         )
 
-        arc = (
-            str(group.get("arc", ""))
-            .lower()
-            .strip()
-        )
-
-        if query in title or query in arc:
-            results.append(group)
-
-    return results
-
+    except Exception:
+        return []
 
 # ================= EXISTS =================
 
