@@ -96,4 +96,8 @@ def process_admin_commands(
         handle_migrate_metadata(chat_id)
         return
 
+    if text == "/migrate_tokens":
+        handle_migrate_tokens(chat_id)
+        return
+
     return False
