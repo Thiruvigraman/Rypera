@@ -142,3 +142,6 @@ def handle_start_token(chat_id, token, user):
         )
 
         return True
+
+# backward compatibility
+process_group_start = handle_start_token
