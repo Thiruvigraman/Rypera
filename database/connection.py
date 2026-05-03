@@ -16,6 +16,7 @@ movies_collection = None
 users_collection = None
 sent_files_collection = None
 access_logs_collection = None
+groups_collection = None
 
 max_retries = 5
 
@@ -32,6 +33,7 @@ for attempt in range(max_retries):
         db = client["telegram_bot"]
 
         movies_collection = db["movies"]
+        groups_collection = db["groups"]
         users_collection = db["users"]
         sent_files_collection = db["sent_files"]
         access_logs_collection = db["access_logs"]
