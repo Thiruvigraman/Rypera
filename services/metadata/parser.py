@@ -4,93 +4,150 @@ import re
 
 
 QUALITY_PATTERNS = [
-    "240p",
-    "360p",
-    "480p",
-    "720p",
-    "1080p",
-    "1440p",
     "2160p",
-    "4k",
+    "1440p",
+    "1080p",
+    "720p",
+    "480p",
+    "360p",
     "hdrip",
     "bluray",
-    "webrip"
+    "webrip",
+    "web-dl"
 ]
 
 AUDIO_PATTERNS = [
-    "eng",
-    "english",
-    "tam",
-    "tamil",
-    "tel",
-    "telugu",
-    "hin",
-    "hindi",
-    "mal",
-    "malayalam",
-    "kan",
-    "kannada",
     "jap",
-    "japanese"
+    "eng",
+    "tam",
+    "tel",
+    "hin",
+    "multi"
 ]
 
 
-def extract_quality(name: str):
-    lower = name.lower()
+def normalize_text(text):
+    return text.lower().strip()
+
+
+def extract_quality(text):
+    text = normalize_text(text)
 
     for quality in QUALITY_PATTERNS:
-        if quality in lower:
+        if quality in text:
             return quality
 
-    return "unknown"
+    return None
 
 
-def extract_audio(name: str):
-    lower = name.lower()
+def extract_audio(text):
+    text = normalize_text(text)
 
     for audio in AUDIO_PATTERNS:
-        if audio in lower:
+        if audio in text:
             return audio
 
-    return "unknown"
+    return None
 
 
-def extract_episode(name: str):
-    match = re.search(r"\b(\d{1,4})\b", name)
+def extract_episode(text):
+    text = normalize_text(text)
 
-    if match:
-        return int(match.group(1))
+    patterns = [
+        r'\be(\d{1,4})\b',
+        r'\bep\s?(\d{1,4})\b',
+        r'\bepisode\s?(\d{1,4})\b',
+        r'\b(\d{3,4})\b'
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                pass
 
     return None
 
 
-def extract_season(name: str):
-    match = re.search(r"s(\d+)", name.lower())
+def extract_season(text):
+    text = normalize_text(text)
 
-    if match:
-        return int(match.group(1))
+    patterns = [
+        r'season\s?(\d+)',
+        r'\bs(\d+)\b'
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                pass
 
     return None
 
 
-def clean_title(name: str):
-    cleaned = name
+def clean_title(text):
+    text = normalize_text(text)
 
-    for item in QUALITY_PATTERNS + AUDIO_PATTERNS:
-        cleaned = re.sub(item, "", cleaned, flags=re.IGNORECASE)
+    remove_patterns = (
+        QUALITY_PATTERNS +
+        AUDIO_PATTERNS +
+        [
+            r'\be\d+\b',
+            r'\bep\d+\b',
+            r'\bepisode\s?\d+\b',
+            r'\b\d{3,4}\b',
+            r'\bs\d+\b',
+            r'season\s?\d+'
+        ]
+    )
 
-    cleaned = re.sub(r"\b\d{1,4}\b", "", cleaned)
+    cleaned = text
 
-    cleaned = re.sub(r"\s+", " ", cleaned)
+    for pattern in remove_patterns:
+        cleaned = re.sub(pattern, ' ', cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r'[_\-.]+', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned)
 
     return cleaned.strip()
 
 
-def parse_metadata(name: str):
+def detect_content_type(episode, season):
+    if season:
+        return "season_episode"
+
+    if episode:
+        return "episode"
+
+    return "movie"
+
+
+def parse_filename(filename):
+    filename = normalize_text(filename)
+
+    quality = extract_quality(filename)
+    audio = extract_audio(filename)
+    episode = extract_episode(filename)
+    season = extract_season(filename)
+    title = clean_title(filename)
+
+    content_type = detect_content_type(
+        episode=episode,
+        season=season
+    )
+
     return {
-        "title": clean_title(name),
-        "episode": extract_episode(name),
-        "season": extract_season(name),
-        "quality": extract_quality(name),
-        "audio": extract_audio(name)
+        "title": title,
+        "episode": episode,
+        "season": season,
+        "quality": quality,
+        "audio": audio,
+        "type": content_type
     }
