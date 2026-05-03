@@ -2,14 +2,17 @@
 
 from bot import send_message
 
-from database.groups import (
-    create_group,
-    group_exists
+from database.movies import (
+    load_movies_full
 )
 
-from database.movies import load_movies_full
+from database.groups import (
+    create_group
+)
 
-from metadata.group_detector import detect_groups
+from metadata.group_detector import (
+    detect_groups
+)
 
 from webhook import log_to_discord
 
@@ -21,35 +24,32 @@ def handle_create_groups(chat_id, user):
         movies = load_movies_full()
 
         if not movies:
-            send_message(chat_id, "❌ No movies found")
+            send_message(
+                chat_id,
+                "❌ No movies found"
+            )
             return
 
-        detected_groups = detect_groups(movies)
+        groups = detect_groups(movies)
 
-        if not detected_groups:
-            send_message(chat_id, "❌ No groups detected")
+        if not groups:
+            send_message(
+                chat_id,
+                "❌ No groups detected"
+            )
             return
 
         created = 0
+
         skipped = 0
 
-        for group in detected_groups:
-            already_exists = group_exists(
-                title=group["title"],
-                season=group["season"],
-                quality=group["quality"],
-                audio=group["audio"],
-                start_episode=group["start_episode"],
-                end_episode=group["end_episode"]
-            )
+        for group in groups:
+            result = create_group(group)
 
-            if already_exists:
+            if result:
+                created += 1
+            else:
                 skipped += 1
-                continue
-
-            create_group(group)
-
-            created += 1
 
         send_message(
             chat_id,
@@ -61,7 +61,7 @@ def handle_create_groups(chat_id, user):
         )
 
         log_to_discord(
-            "📦 Groups Created",
+            "Groups created",
             "list",
             "info",
             fields={
@@ -72,7 +72,14 @@ def handle_create_groups(chat_id, user):
         )
 
     except Exception as e:
-        print("CREATE GROUPS ERROR:", str(e))
+        log_to_discord(
+            "Create groups failed",
+            "status",
+            "error",
+            fields={
+                "error": str(e)
+            }
+        )
 
         send_message(
             chat_id,
