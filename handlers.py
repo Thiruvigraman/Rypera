@@ -525,6 +525,13 @@ def process_update(update):
 
                 return
 
+            if text == "/migrate_tokens":
+                handle_migrate_tokens(
+                    chat_id
+                )
+
+                return
+
         # ================= START =================
 
         if text.startswith("/start "):
