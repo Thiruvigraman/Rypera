@@ -3,20 +3,18 @@
 import secrets
 import string
 
+from webhook import log_to_discord
+
 from .connection import (
     MONGO_AVAILABLE,
-    db
+    groups_collection
 )
 
-groups_collection = db["groups"]
-
-
-# ================= TOKEN =================
 
 def generate_group_token(length=12):
     chars = string.ascii_letters + string.digits
 
-    return "".join(
+    return ''.join(
         secrets.choice(chars)
         for _ in range(length)
     )
@@ -36,107 +34,111 @@ def generate_unique_group_token():
     return generate_group_token()
 
 
-# ================= INDEXES =================
-
-def setup_group_indexes():
-    if not MONGO_AVAILABLE:
-        return
-
-    try:
-        groups_collection.create_index(
-            [("token", 1)],
-            unique=True
-        )
-
-        groups_collection.create_index(
-            [("title", 1)]
-        )
-
-        groups_collection.create_index(
-            [("season", 1)]
-        )
-
-        groups_collection.create_index(
-            [("arc", 1)]
-        )
-
-        groups_collection.create_index(
-            [("quality", 1)]
-        )
-
-        groups_collection.create_index(
-            [("audio", 1)]
-        )
-
-    except Exception:
-        pass
-
-
-# ================= CREATE =================
-
 def create_group(group_data):
     if not MONGO_AVAILABLE:
         return None
 
-    token = generate_unique_group_token()
+    try:
+        title = group_data.get("title")
 
-    document = {
-        "token": token,
+        season = group_data.get("season")
 
-        "title": group_data.get("title"),
+        arc = group_data.get("arc")
 
-        "season": group_data.get("season"),
+        quality = group_data.get("quality")
 
-        "arc": group_data.get("arc"),
+        audio = group_data.get("audio")
 
-        "quality": group_data.get("quality"),
+        start_episode = group_data.get("start_episode")
 
-        "audio": group_data.get("audio"),
+        end_episode = group_data.get("end_episode")
 
-        "start_episode": group_data.get("start_episode"),
+        existing = groups_collection.find_one({
+            "title": title,
+            "season": season,
+            "arc": arc,
+            "quality": quality,
+            "audio": audio,
+            "start_episode": start_episode,
+            "end_episode": end_episode
+        })
 
-        "end_episode": group_data.get("end_episode"),
+        if existing:
+            return None
 
-        "count": group_data.get("count", 0),
+        token = generate_unique_group_token()
 
-        "file_ids": [
-            movie["file_id"]
-            for movie in group_data.get("movies", [])
-        ]
-    }
+        document = {
+            "title": title,
 
-    groups_collection.insert_one(document)
+            "main_title": group_data.get(
+                "main_title"
+            ),
 
-    return token
+            "season": season,
 
+            "arc": arc,
 
-# ================= FETCH =================
+            "quality": quality,
+
+            "audio": audio,
+
+            "start_episode": start_episode,
+
+            "end_episode": end_episode,
+
+            "count": group_data.get("count", 0),
+
+            "movies": group_data.get("movies", []),
+
+            "token": token,
+
+            "access_count": 0
+        }
+
+        groups_collection.insert_one(document)
+
+        return token
+
+    except Exception as e:
+        log_to_discord(
+            "Create group failed",
+            "status",
+            "error",
+            fields={
+                "error": str(e)
+            }
+        )
+
+        return None
+
 
 def get_group_by_token(token):
     if not MONGO_AVAILABLE:
         return None
 
-    return groups_collection.find_one({
-        "token": token
-    })
+    try:
+        return groups_collection.find_one({
+            "token": token
+        })
+
+    except Exception:
+        return None
 
 
-def get_all_groups():
+def increment_group_access(token):
     if not MONGO_AVAILABLE:
-        return []
+        return
 
     try:
-        return list(
-            groups_collection.find().sort(
-                "title",
-                1
-            )
+        groups_collection.update_one(
+            {"token": token},
+            {"$inc": {"access_count": 1}}
         )
 
     except Exception:
-        return []
+        pass
 
-# ================= SEARCH =================
 
 def search_groups(query, limit=20):
     if not MONGO_AVAILABLE:
@@ -157,35 +159,18 @@ def search_groups(query, limit=20):
     except Exception:
         return []
 
-# ================= EXISTS =================
 
-def group_exists(
-    title,
-    season,
-    quality,
-    audio,
-    start_episode,
-    end_episode
-):
+def get_all_groups():
     if not MONGO_AVAILABLE:
-        return False
+        return []
 
-    existing = groups_collection.find_one({
-        "title": title,
-        "season": season,
-        "quality": quality,
-        "audio": audio,
-        "start_episode": start_episode,
-        "end_episode": end_episode
-    })
+    try:
+        return list(
+            groups_collection.find().sort(
+                "title",
+                1
+            )
+        )
 
-    return existing is not None
-
-
-# ================= DELETE =================
-
-def delete_all_groups():
-    if not MONGO_AVAILABLE:
-        return
-
-    groups_collection.delete_many({})
+    except Exception:
+        return []
