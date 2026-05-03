@@ -11,6 +11,9 @@ from commands.announcement import handle_announcement
 from commands.list_movies import handle_list_movies
 from commands.upload_movie import handle_upload_name
 from commands.cmd import handle_cmd
+from commands.create_groups import (
+    handle_create_groups
+)
 
 
 def process_admin_commands(
@@ -69,15 +72,14 @@ def process_admin_commands(
         handle_list_movies(chat_id, user)
         return True
 
+    if text == "/create_groups":
+        handle_create_groups(chat_id, user)
+        return True
+
     if text.startswith("/search"):
         handle_search(chat_id, text)
         return True
 
-    if text == "/create_groups":
-        handle_create_groups(
-        chat_id,
-        user
-    )
-        return
+    
 
     return False
