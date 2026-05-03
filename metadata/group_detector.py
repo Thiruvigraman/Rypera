@@ -1,4 +1,4 @@
- # file: metadata/group_detector.py
+# file: metadata/group_detector.py
 
 from collections import defaultdict
 
@@ -7,20 +7,24 @@ MIN_GROUP_SIZE = 3
 
 
 def build_group_key(movie):
+    metadata = movie.get("metadata", {})
+
     return (
-        movie.get("title"),
-        movie.get("quality"),
-        movie.get("audio"),
-        movie.get("season")
+        metadata.get("title"),
+        metadata.get("season"),
+        metadata.get("quality"),
+        metadata.get("audio"),
+        metadata.get("arc")
     )
 
 
 def detect_groups(movies):
     grouped = defaultdict(list)
 
-    # group similar metadata
     for movie in movies:
-        episode = movie.get("episode")
+        metadata = movie.get("metadata", {})
+
+        episode = metadata.get("episode")
 
         if episode is None:
             continue
@@ -31,11 +35,10 @@ def detect_groups(movies):
 
     results = []
 
-    # process every metadata group
     for key, items in grouped.items():
         sorted_items = sorted(
             items,
-            key=lambda x: x.get("episode", 0)
+            key=lambda x: x["metadata"].get("episode", 0)
         )
 
         current_group = []
@@ -43,7 +46,7 @@ def detect_groups(movies):
         previous_episode = None
 
         for movie in sorted_items:
-            episode = movie["episode"]
+            episode = movie["metadata"].get("episode")
 
             if previous_episode is None:
                 current_group.append(movie)
@@ -53,37 +56,68 @@ def detect_groups(movies):
 
             else:
                 if len(current_group) >= MIN_GROUP_SIZE:
-                    results.append(build_group_data(current_group))
+                    results.append(
+                        build_group_data(current_group)
+                    )
 
                 current_group = [movie]
 
             previous_episode = episode
 
-        # final flush
         if len(current_group) >= MIN_GROUP_SIZE:
-            results.append(build_group_data(current_group))
+            results.append(
+                build_group_data(current_group)
+            )
 
     return results
 
 
 def build_group_data(group):
     first = group[0]
+
     last = group[-1]
 
+    metadata = first.get("metadata", {})
+
+    arc = metadata.get("arc")
+
+    season = metadata.get("season")
+
+    title = metadata.get("title")
+
+    label = title
+
+    if arc:
+        label = f"{title} - {arc} Arc"
+
+    elif season:
+        label = f"{title} - Season {season}"
+
     return {
-        "title": first.get("title"),
+        "title": label,
 
-        "quality": first.get("quality"),
+        "main_title": title,
 
-        "audio": first.get("audio"),
+        "season": season,
 
-        "season": first.get("season"),
+        "arc": arc,
 
-        "start_episode": first.get("episode"),
+        "quality": metadata.get("quality"),
 
-        "end_episode": last.get("episode"),
+        "audio": metadata.get("audio"),
+
+        "start_episode": group[0]["metadata"].get("episode"),
+
+        "end_episode": group[-1]["metadata"].get("episode"),
 
         "count": len(group),
 
-        "movies": group
+        "movies": [
+            {
+                "name": movie.get("name"),
+                "file_id": movie.get("file_id"),
+                "episode": movie["metadata"].get("episode")
+            }
+            for movie in group
+        ]
     }
