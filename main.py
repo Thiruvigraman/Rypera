@@ -15,6 +15,7 @@ from handlers import process_update
 from globals import start_time,log_queue
 from database import is_db_available
 from database import setup_log_ttl
+from database.group_queue import start_group_worker
 from concurrent.futures import ThreadPoolExecutor
 
 EXECUTOR = ThreadPoolExecutor(max_workers=20)
@@ -196,6 +197,8 @@ def init_system():
     startup_check()
     start_background_monitor()
     cleanup_pending_files()
+
+    start_group_worker()
 
     setup_log_ttl()
     
