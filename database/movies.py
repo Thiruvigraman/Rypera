@@ -113,12 +113,17 @@ def save_movie(name, file_id):
     "name": name
 })
 
-         if existing:
-          token = existing.get("token")
-else:
-          token = generate_unique_token()
+         existing = movies_collection.find_one({
+            "name": name
+        })
 
-        # ================= METADATA =================
+        if existing:
+            token = existing.get("token")
+        else:
+            token = generate_unique_token()
+
+        # ================= METADATA
+ =================
 
         metadata = parse_filename(name)
 
