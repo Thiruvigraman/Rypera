@@ -11,6 +11,8 @@ from .connection import (
 groups_collection = db["groups"]
 
 
+# ================= TOKEN =================
+
 def generate_group_token(length=12):
     chars = string.ascii_letters + string.digits
 
@@ -34,6 +36,44 @@ def generate_unique_group_token():
     return generate_group_token()
 
 
+# ================= INDEXES =================
+
+def setup_group_indexes():
+    if not MONGO_AVAILABLE:
+        return
+
+    try:
+        groups_collection.create_index(
+            [("token", 1)],
+            unique=True
+        )
+
+        groups_collection.create_index(
+            [("title", 1)]
+        )
+
+        groups_collection.create_index(
+            [("season", 1)]
+        )
+
+        groups_collection.create_index(
+            [("arc", 1)]
+        )
+
+        groups_collection.create_index(
+            [("quality", 1)]
+        )
+
+        groups_collection.create_index(
+            [("audio", 1)]
+        )
+
+    except Exception:
+        pass
+
+
+# ================= CREATE =================
+
 def create_group(group_data):
     if not MONGO_AVAILABLE:
         return None
@@ -43,23 +83,25 @@ def create_group(group_data):
     document = {
         "token": token,
 
-        "title": group_data["title"],
+        "title": group_data.get("title"),
 
-        "season": group_data["season"],
+        "season": group_data.get("season"),
 
-        "quality": group_data["quality"],
+        "arc": group_data.get("arc"),
 
-        "audio": group_data["audio"],
+        "quality": group_data.get("quality"),
 
-        "start_episode": group_data["start_episode"],
+        "audio": group_data.get("audio"),
 
-        "end_episode": group_data["end_episode"],
+        "start_episode": group_data.get("start_episode"),
 
-        "count": group_data["count"],
+        "end_episode": group_data.get("end_episode"),
+
+        "count": group_data.get("count", 0),
 
         "file_ids": [
             movie["file_id"]
-            for movie in group_data["movies"]
+            for movie in group_data.get("movies", [])
         ]
     }
 
@@ -67,6 +109,8 @@ def create_group(group_data):
 
     return token
 
+
+# ================= FETCH =================
 
 def get_group_by_token(token):
     if not MONGO_AVAILABLE:
@@ -76,6 +120,48 @@ def get_group_by_token(token):
         "token": token
     })
 
+
+def get_all_groups():
+    if not MONGO_AVAILABLE:
+        return []
+
+    return list(
+        groups_collection.find({})
+    )
+
+
+# ================= SEARCH =================
+
+def search_groups(query):
+    if not MONGO_AVAILABLE:
+        return []
+
+    query = query.lower().strip()
+
+    results = []
+
+    cursor = groups_collection.find({})
+
+    for group in cursor:
+        title = (
+            group.get("title", "")
+            .lower()
+            .strip()
+        )
+
+        arc = (
+            str(group.get("arc", ""))
+            .lower()
+            .strip()
+        )
+
+        if query in title or query in arc:
+            results.append(group)
+
+    return results
+
+
+# ================= EXISTS =================
 
 def group_exists(
     title,
@@ -100,10 +186,10 @@ def group_exists(
     return existing is not None
 
 
-def get_all_groups():
-    if not MONGO_AVAILABLE:
-        return []
+# ================= DELETE =================
 
-    return list(
-        groups_collection.find({})
-    )
+def delete_all_groups():
+    if not MONGO_AVAILABLE:
+        return
+
+    groups_collection.delete_many({})
