@@ -38,11 +38,30 @@ def handle_start_token(chat_id, token, user):
 
     movie = get_movie_by_token(token)
 
+    # backward compatibility
+    if not movie:
+        normalized = (
+            token
+            .replace("_", " ")
+            .strip()
+        )
+
+        from database.connection import movies_collection
+
+        movie = movies_collection.find_one({
+            "name": {
+                "$regex": f"^{normalized}$",
+                "$options": "i"
+            }
+        })
+
     if movie:
         try:
             increment_movie_access(movie["name"])
 
-            updated_movie = get_movie_by_token(token)
+            updated_movie = get_movie_by_token(
+                movie.get("token")
+            ) if movie.get("token") else movie
 
             count = 1
 
