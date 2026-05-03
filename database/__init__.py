@@ -1,17 +1,53 @@
- # file: database/init.py
+# file: database/__init__.py
 
-from .connection import *
+from .connection import (
+    MONGO_AVAILABLE
+)
 
-from .movies import *
+from .movies import (
+    load_movies,
+    load_movies_full,
+    load_movies_cached,
+    save_movie,
+    get_movie_by_token,
+    delete_movie,
+    rename_movie,
+    increment_movie_access,
+    get_top_movies
+)
 
-from .users import *
+from .users import (
+    add_user,
+    get_all_users,
+    remove_user
+)
 
-from .sent_files import *
+from .stats import (
+    get_stats,
+    get_db_size_mb
+)
 
-from .access_logs import *
+from .sent_files import (
+    save_sent_file,
+    get_pending_files,
+    delete_sent_file_record
+)
 
-from .stats import *
+from .access_logs import (
+    save_access_log,
+    get_unsent_logs,
+    mark_log_sent,
+    setup_log_ttl
+)
 
-from database.groups import *
+from .groups import (
+    create_group,
+    get_group_by_token,
+    increment_group_access,
+    search_groups,
+    get_all_groups
+)
 
-from database.group_queue import *
+
+def is_db_available():
+    return MONGO_AVAILABLE
