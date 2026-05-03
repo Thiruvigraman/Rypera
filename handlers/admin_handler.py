@@ -89,7 +89,7 @@ def process_admin_commands(
 
     if text == "/list_groups":
         handle_list_groups(chat_id)
-        return
+        return True
 
     if text == "/create_groups":
         handle_create_groups(chat_id, user)
@@ -109,10 +109,10 @@ def process_admin_commands(
 
     if text == "/migrate_metadata":
         handle_migrate_metadata(chat_id)
-        return
+        return True
 
     if text == "/migrate_tokens":
         handle_migrate_tokens(chat_id)
-        return
+        return True
 
     return False
