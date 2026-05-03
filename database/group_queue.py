@@ -1,157 +1,169 @@
 # file: database/group_queue.py
 
 import time
+import queue
+import threading
 
-from database.connection import (
-    MONGO_AVAILABLE,
-    db
-)
+from webhook import log_to_discord
 
-queue_collection = db["delivery_queue"]
-
-
-# ================= INDEXES =================
-
-try:
-    queue_collection.create_index([
-        ("status", 1)
-    ])
-
-    queue_collection.create_index([
-        ("created_at", 1)
-    ])
-
-except Exception:
-    pass
+from bot import send_file
 
 
-# ================= CREATE =================
+GROUP_QUEUE = queue.Queue()
 
-def create_delivery_job(chat_id, token, movies):
-    if not MONGO_AVAILABLE:
-        return None
+ACTIVE_USERS = set()
+
+QUEUE_LOCK = threading.Lock()
+
+WORKER_STARTED = False
+
+MAX_RETRIES = 3
+
+SEND_DELAY = 1.2
+
+BATCH_DELAY = 3
+
+
+def is_user_active(chat_id):
+    with QUEUE_LOCK:
+        return chat_id in ACTIVE_USERS
+
+
+def set_user_active(chat_id):
+    with QUEUE_LOCK:
+        ACTIVE_USERS.add(chat_id)
+
+
+def remove_user_active(chat_id):
+    with QUEUE_LOCK:
+        ACTIVE_USERS.discard(chat_id)
+
+
+def queue_group_delivery(
+    chat_id,
+    files,
+    username=None
+):
+    if not files:
+        return False
+
+    if is_user_active(chat_id):
+        return False
+
+    payload = {
+        "chat_id": chat_id,
+        "files": files,
+        "username": username,
+        "created_at": time.time(),
+        "retries": 0
+    }
+
+    GROUP_QUEUE.put(payload)
+
+    return True
+
+
+def send_group_files(payload):
+    chat_id = payload["chat_id"]
+
+    files = payload["files"]
+
+    username = payload.get("username")
+
+    total = len(files)
+
+    sent = 0
+
+    set_user_active(chat_id)
 
     try:
-        document = {
-            "chat_id": chat_id,
+        for movie in files:
+            try:
+                send_file(
+                    chat_id=chat_id,
+                    file_id=movie["file_id"],
+                    username=username,
+                    movie_name=movie.get("name"),
+                    count=None
+                )
 
-            "token": token,
+                sent += 1
 
-            "status": "pending",
+                time.sleep(SEND_DELAY)
 
-            "current_index": 0,
+            except Exception as e:
+                log_to_discord(
+                    "Grouped file send failed",
+                    "status",
+                    "error",
+                    fields={
+                        "chat_id": chat_id,
+                        "movie": movie.get("name"),
+                        "error": str(e)
+                    }
+                )
 
-            "movies": movies,
-
-            "created_at": time.time(),
-
-            "started_at": None,
-
-            "completed_at": None,
-
-            "failed_reason": None
-        }
-
-        result = queue_collection.insert_one(document)
-
-        return str(result.inserted_id)
-
-    except Exception:
-        return None
-
-
-# ================= FETCH =================
-
-def get_pending_job():
-    if not MONGO_AVAILABLE:
-        return None
-
-    try:
-        return queue_collection.find_one_and_update(
-            {
-                "status": "pending"
-            },
-            {
-                "$set": {
-                    "status": "processing",
-                    "started_at": time.time()
-                }
+        log_to_discord(
+            "Grouped delivery completed",
+            "access",
+            "info",
+            fields={
+                "chat_id": chat_id,
+                "total": total,
+                "sent": sent
             }
         )
 
-    except Exception:
-        return None
+    finally:
+        remove_user_active(chat_id)
+
+        time.sleep(BATCH_DELAY)
 
 
-# ================= UPDATE =================
+def worker_loop():
+    while True:
+        try:
+            payload = GROUP_QUEUE.get()
 
-def update_job_progress(job_id, index):
-    if not MONGO_AVAILABLE:
+            try:
+                send_group_files(payload)
+
+            except Exception as e:
+                retries = payload.get("retries", 0)
+
+                if retries < MAX_RETRIES:
+                    payload["retries"] = retries + 1
+                    GROUP_QUEUE.put(payload)
+
+                log_to_discord(
+                    "Group queue worker error",
+                    "status",
+                    "error",
+                    fields={"error": str(e)}
+                )
+
+            GROUP_QUEUE.task_done()
+
+        except Exception as e:
+            log_to_discord(
+                "Group queue crash",
+                "status",
+                "error",
+                fields={"error": str(e)}
+            )
+
+            time.sleep(5)
+
+
+def start_group_queue_worker():
+    global WORKER_STARTED
+
+    if WORKER_STARTED:
         return
 
-    try:
-        from bson import ObjectId
+    WORKER_STARTED = True
 
-        queue_collection.update_one(
-            {
-                "_id": ObjectId(job_id)
-            },
-            {
-                "$set": {
-                    "current_index": index
-                }
-            }
-        )
-
-    except Exception:
-        pass
-
-
-# ================= COMPLETE =================
-
-def complete_job(job_id):
-    if not MONGO_AVAILABLE:
-        return
-
-    try:
-        from bson import ObjectId
-
-        queue_collection.update_one(
-            {
-                "_id": ObjectId(job_id)
-            },
-            {
-                "$set": {
-                    "status": "completed",
-                    "completed_at": time.time()
-                }
-            }
-        )
-
-    except Exception:
-        pass
-
-
-# ================= FAIL =================
-
-def fail_job(job_id, reason):
-    if not MONGO_AVAILABLE:
-        return
-
-    try:
-        from bson import ObjectId
-
-        queue_collection.update_one(
-            {
-                "_id": ObjectId(job_id)
-            },
-            {
-                "$set": {
-                    "status": "failed",
-                    "failed_reason": reason
-                }
-            }
-        )
-
-    except Exception:
-        pass
+    threading.Thread(
+        target=worker_loop,
+        daemon=True
+    ).start()
