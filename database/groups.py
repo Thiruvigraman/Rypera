@@ -125,10 +125,16 @@ def get_all_groups():
     if not MONGO_AVAILABLE:
         return []
 
-    return list(
-        groups_collection.find({})
-    )
+    try:
+        return list(
+            groups_collection.find().sort(
+                "title",
+                1
+            )
+        )
 
+    except Exception:
+        return []
 
 # ================= SEARCH =================
 
