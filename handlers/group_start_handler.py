@@ -1,7 +1,13 @@
 # file: handlers/group_start_handler.py
 
+from database.movies import (
+    get_movie_by_token,
+    increment_movie_access
+)
+
 from database.groups import (
-    get_group_by_token
+    get_group_by_token,
+    increment_group_access
 )
 
 from database.group_queue import (
@@ -12,73 +18,112 @@ from metadata.group_resolver import (
     resolve_group_files
 )
 
+from bot import (
+    send_file,
+    send_message
+)
+
 from webhook import log_to_discord
 
-from bot import send_message
+from utils import get_username
 
 
-def is_group_token(token):
-    group = get_group_by_token(token)
+def handle_start_token(chat_id, token, user):
+    """
+    Main /start token resolver
 
-    return group is not None
+    Supports:
+    - single movie tokens
+    - grouped tokens
+    """
 
+    # ================= SINGLE FILE =================
 
-def process_group_start(
-    token,
-    chat_id,
-    user,
-    user_id
-):
+    movie = get_movie_by_token(token)
+
+    if movie:
+        try:
+            increment_movie_access(movie["name"])
+
+            updated_movie = get_movie_by_token(token)
+
+            count = 1
+
+            if updated_movie:
+                count = updated_movie.get(
+                    "access_count",
+                    1
+                )
+
+            send_file(
+                chat_id,
+                movie["file_id"],
+                username=get_username(user),
+                movie_name=movie["name"],
+                count=count
+            )
+
+            return True
+
+        except Exception as e:
+            log_to_discord(
+                "Single token delivery failed",
+                "status",
+                "error",
+                fields={
+                    "error": str(e),
+                    "token": token
+                }
+            )
+
+            send_message(
+                chat_id,
+                "❌ Failed to send file"
+            )
+
+            return True
+
+    # ================= GROUP TOKEN =================
+
     group = get_group_by_token(token)
 
     if not group:
         return False
 
     try:
-        resolved = resolve_group_files(group)
-
-        files = resolved["files"]
-
-        missing = resolved["missing_episodes"]
+        files = resolve_group_files(group)
 
         if not files:
             send_message(
                 chat_id,
-                "❌ Group has no files"
+                "❌ No files found in group"
             )
-
             return True
 
-        username = user.get("first_name", "User")
+        increment_group_access(token)
 
         queued = queue_group_delivery(
             chat_id=chat_id,
             files=files,
-            username=username
+            username=get_username(user),
+            group_name=group.get("title")
         )
 
         if not queued:
             send_message(
                 chat_id,
-                "⚠️ Delivery already running"
+                "❌ Failed to queue delivery"
             )
-
             return True
 
-        if missing:
-            send_message(
-                chat_id,
-                f"⚠️ Missing Episodes: {missing[:10]}"
-            )
-
         log_to_discord(
-            "Grouped delivery started",
+            "Grouped delivery queued",
             "access",
             "info",
             fields={
-                "user_id": user_id,
                 "group": group.get("title"),
-                "count": len(files)
+                "count": len(files),
+                "chat_id": chat_id
             }
         )
 
@@ -86,12 +131,12 @@ def process_group_start(
 
     except Exception as e:
         log_to_discord(
-            "Group delivery failed",
+            "Grouped token delivery failed",
             "status",
             "error",
             fields={
-                "token": token,
-                "error": str(e)
+                "error": str(e),
+                "token": token
             }
         )
 
