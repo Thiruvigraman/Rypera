@@ -400,7 +400,24 @@ def process_update(update):
         if is_admin(user_id):
 
             if text == "/cmd":
-                handle_cmd(chat_id)
+                try:
+                    handle_cmd(chat_id)
+
+                except Exception as e:
+                    log_to_discord(
+                        "CMD handler failed",
+                        "status",
+                        "error",
+                        fields={
+                            "error": str(e)
+                        }
+                    )
+
+                    safe_send(
+                        chat_id,
+                        f"❌ CMD error:\n{str(e)}"
+                    )
+
                 return
 
             if text.startswith("/generate_link"):
@@ -479,6 +496,28 @@ def process_update(update):
                 handle_search(
                     chat_id,
                     text
+                )
+
+                return
+
+            if text.startswith("/gsearch"):
+                handle_group_search(
+                    chat_id,
+                    text.replace("/gsearch", "", 1).strip()
+                )
+
+                return
+
+            if text == "/create_groups":
+                handle_create_groups(
+                    chat_id
+                )
+
+                return
+
+            if text == "/migrate_metadata":
+                handle_migrate_metadata(
+                    chat_id
                 )
 
                 return
