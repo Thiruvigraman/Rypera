@@ -1,1 +1,275 @@
 # file : database/movies.py
+
+import secrets
+import string
+
+from webhook import log_to_discord
+from redis_client import (
+    get_cache,
+    set_cache,
+    delete_cache,
+    REDIS_AVAILABLE
+)
+
+from services.metadata.parser import parse_metadata
+
+from .connection import (
+    MONGO_AVAILABLE,
+    movies_collection
+)
+
+
+# ================= TOKEN =================
+
+def generate_token(length=10):
+    chars = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def generate_unique_token():
+    for _ in range(10):
+        token = generate_token()
+
+        if not movies_collection.find_one({"token": token}):
+            return token
+
+    return generate_token()
+
+
+# ================= MOVIES =================
+
+def load_movies():
+    if not MONGO_AVAILABLE:
+        return {}
+
+    try:
+        return {
+            doc['name']: {
+                "file_id": doc['file_id'],
+                "token": doc.get("token")
+            }
+            for doc in movies_collection.find(
+                {},
+                {
+                    "name": 1,
+                    "file_id": 1,
+                    "token": 1,
+                    "_id": 0
+                }
+            )
+        }
+
+    except Exception:
+        log_to_discord(
+            "Load movies failed",
+            "status",
+            "error"
+        )
+        return {}
+
+
+def load_movies_cached():
+    return load_movies()
+
+
+def save_movie(name, file_id):
+    if not name or not file_id or not MONGO_AVAILABLE:
+        return None
+
+    try:
+        token = generate_unique_token()
+
+        metadata = parse_metadata(name)
+
+        movies_collection.update_one(
+            {"name": name},
+            {
+                "$set": {
+                    "name": name,
+                    "title": metadata["title"],
+                    "episode": metadata["episode"],
+                    "season": metadata["season"],
+                    "quality": metadata["quality"],
+                    "audio": metadata["audio"],
+                    "file_id": file_id,
+                    "token": token
+                },
+                "$setOnInsert": {
+                    "access_count": 0
+                }
+            },
+            upsert=True
+        )
+
+        if REDIS_AVAILABLE:
+            set_cache(
+                f"movie:{name}",
+                {
+                    "file_id": file_id,
+                    "token": token
+                },
+                ttl=3600
+            )
+
+            set_cache(
+                f"token:{token}",
+                name,
+                ttl=3600
+            )
+
+        return token
+
+    except Exception as e:
+        print("SAVE MOVIE ERROR:", str(e))
+
+        log_to_discord(
+            "Save movie failed",
+            "status",
+            "error"
+        )
+
+        return None
+
+
+def get_movie_by_token(token):
+    if not token:
+        return None
+
+    if REDIS_AVAILABLE:
+        name = get_cache(f"token:{token}")
+
+        if name:
+            movie = get_cache(f"movie:{name}")
+
+            if movie:
+                return {"name": name, **movie}
+
+    if not MONGO_AVAILABLE:
+        return None
+
+    try:
+        movie = movies_collection.find_one({"token": token})
+
+        if movie and REDIS_AVAILABLE:
+            name = movie["name"]
+
+            set_cache(
+                f"movie:{name}",
+                {
+                    "file_id": movie["file_id"],
+                    "token": movie["token"]
+                },
+                ttl=3600
+            )
+
+            set_cache(
+                f"token:{token}",
+                name,
+                ttl=3600
+            )
+
+        return movie
+
+    except Exception:
+        return None
+
+
+def delete_movie(name):
+    if not MONGO_AVAILABLE:
+        return
+
+    try:
+        movie = movies_collection.find_one({"name": name})
+
+        movies_collection.delete_one({"name": name})
+
+        if REDIS_AVAILABLE and movie:
+            delete_cache(f"movie:{name}")
+            delete_cache(f"token:{movie.get('token')}")
+
+    except Exception:
+        pass
+
+
+def rename_movie(old_name, new_name):
+    if not MONGO_AVAILABLE:
+        return False
+
+    try:
+        movie = movies_collection.find_one({"name": old_name})
+
+        if not movie:
+            return False
+
+        metadata = parse_metadata(new_name)
+
+        movies_collection.delete_one({"name": old_name})
+
+        movies_collection.insert_one({
+            "name": new_name,
+            "title": metadata["title"],
+            "episode": metadata["episode"],
+            "season": metadata["season"],
+            "quality": metadata["quality"],
+            "audio": metadata["audio"],
+            "file_id": movie["file_id"],
+            "token": movie.get("token"),
+            "access_count": movie.get("access_count", 0)
+        })
+
+        if REDIS_AVAILABLE:
+            delete_cache(f"movie:{old_name}")
+
+            set_cache(
+                f"movie:{new_name}",
+                {
+                    "file_id": movie["file_id"],
+                    "token": movie.get("token")
+                },
+                ttl=3600
+            )
+
+        return True
+
+    except Exception:
+        return False
+
+
+# ================= ACCESS =================
+
+def increment_movie_access(name):
+    if not MONGO_AVAILABLE:
+        return
+
+    try:
+        movies_collection.update_one(
+            {"name": name},
+            {"$inc": {"access_count": 1}},
+            upsert=True
+        )
+
+    except Exception:
+        pass
+
+
+def get_top_movies(limit=5):
+    if not MONGO_AVAILABLE:
+        return []
+
+    try:
+        return list(
+            movies_collection
+            .find(
+                {},
+                {
+                    "name": 1,
+                    "access_count": 1,
+                    "_id": 0
+                }
+            )
+            .sort("access_count", -1)
+            .limit(limit)
+        )
+
+    except Exception:
+        return []
