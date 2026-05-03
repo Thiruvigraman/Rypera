@@ -1,6 +1,7 @@
 #file : metadata/parser.py
 
 import re
+from metadata.arc_detector import detect_arc
 
 
 QUALITY_PATTERNS = [
@@ -133,14 +134,23 @@ def parse_filename(filename):
     filename = normalize_text(filename)
 
     quality = extract_quality(filename)
+
     audio = extract_audio(filename)
+
     episode = extract_episode(filename)
+
     season = extract_season(filename)
+
     title = clean_title(filename)
 
     content_type = detect_content_type(
         episode=episode,
         season=season
+    )
+
+    arc = detect_arc(
+        title=title,
+        episode=episode
     )
 
     return {
@@ -149,5 +159,6 @@ def parse_filename(filename):
         "season": season,
         "quality": quality,
         "audio": audio,
+        "arc": arc,
         "type": content_type
     }
