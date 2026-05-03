@@ -44,6 +44,21 @@ for attempt in range(max_retries):
             [("chat_id", 1), ("file_message_id", 1)]
         )
 
+        groups_collection.create_index(
+    [("token", 1)],
+    unique=True
+)
+
+        groups_collection.create_index([
+    ("title", 1),
+    ("season", 1),
+    ("arc", 1),
+    ("quality", 1),
+    ("audio", 1),
+    ("start_episode", 1),
+    ("end_episode", 1)
+])
+
         users_collection.create_index(
             [("user_id", 1)],
             unique=True
