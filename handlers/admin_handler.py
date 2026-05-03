@@ -76,6 +76,14 @@ def process_admin_commands(
         handle_create_groups(chat_id, user)
         return True
 
+    if text.startswith("/gsearch"):
+                handle_group_search(
+                    chat_id,
+                    text.replace("/gsearch", "", 1).strip()
+                )
+        return
+
+
     if text.startswith("/search"):
         handle_search(chat_id, text)
         return True
