@@ -525,59 +525,15 @@ def process_update(update):
         # ================= START =================
 
         if text.startswith("/start "):
-            query = text.split(" ", 1)[1]
+            query = text.split(" ", 1)[1].strip()
 
-            # =========================================
-            # GROUPED TOKEN SYSTEM
-            # =========================================
+            handled = process_group_start(
+                token=query,
+                chat_id=chat_id,
+                user=user
+            )
 
-            if is_group_token(query):
-                handled = process_group_start(
-                    token=query,
-                    chat_id=chat_id,
-                    user=user,
-                    user_id=user_id
-                )
-
-                if handled:
-                    return
-
-            # =========================================
-            # OLD SINGLE FILE SYSTEM
-            # =========================================
-
-            movie = get_movie_by_token(query)
-
-            if movie:
-                increment_movie_access(
-                    movie["name"]
-                )
-
-                updated_movie = get_movie_by_token(
-                    query
-                )
-
-                count = 1
-
-                if (
-                    updated_movie
-                    and "access_count" in updated_movie
-                ):
-                    count = updated_movie["access_count"]
-
-                send_file(
-                    chat_id,
-                    movie["file_id"],
-                    get_user_name(user),
-                    movie["name"],
-                    count
-                )
-
-                save_access_log(
-                    user_id,
-                    movie["name"]
-                )
-
+            if handled:
                 return
 
             safe_send(
@@ -594,6 +550,8 @@ def process_update(update):
                     "query": query
                 }
             )
+
+            return
 
     except Exception as e:
         log_to_discord(
