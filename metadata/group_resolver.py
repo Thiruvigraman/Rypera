@@ -17,23 +17,31 @@ def safe_episode(value):
         return None
 
 
+def get_metadata(movie):
+    return movie.get("metadata", {})
+
+
 def movie_matches_group(movie, group):
-    if normalize(movie.get("title")) != normalize(group.get("title")):
+    metadata = get_metadata(movie)
+
+    if normalize(metadata.get("title")) != normalize(group.get("main_title")):
         return False
 
-    if normalize(movie.get("quality")) != normalize(group.get("quality")):
+    if normalize(metadata.get("quality")) != normalize(group.get("quality")):
         return False
 
-    if normalize(movie.get("audio")) != normalize(group.get("audio")):
+    if normalize(metadata.get("audio")) != normalize(group.get("audio")):
         return False
 
-    movie_season = movie.get("season")
+    movie_season = metadata.get("season")
     group_season = group.get("season")
 
     if movie_season != group_season:
         return False
 
-    episode = safe_episode(movie.get("episode"))
+    episode = safe_episode(
+        metadata.get("episode")
+    )
 
     if episode is None:
         return False
@@ -47,6 +55,16 @@ def movie_matches_group(movie, group):
     if episode > end_ep:
         return False
 
+    # arc validation
+    group_arc = normalize(group.get("arc"))
+
+    movie_arc = normalize(
+        metadata.get("arc")
+    )
+
+    if group_arc and movie_arc != group_arc:
+        return False
+
     return True
 
 
@@ -54,8 +72,8 @@ def sort_movies(movies):
     return sorted(
         movies,
         key=lambda x: (
-            x.get("season") or 0,
-            x.get("episode") or 0
+            x.get("metadata", {}).get("season") or 0,
+            x.get("metadata", {}).get("episode") or 0
         )
     )
 
