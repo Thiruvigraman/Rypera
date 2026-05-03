@@ -92,6 +92,8 @@ def process_admin_commands(
         handle_search(chat_id, text)
         return True
 
-    
+    if text == "/migrate_metadata":
+        handle_migrate_metadata(chat_id)
+        return
 
     return False
