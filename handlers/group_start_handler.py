@@ -4,11 +4,17 @@ from database.groups import (
     get_group_by_token
 )
 
+from database.group_queue import (
+    queue_group_delivery
+)
+
 from metadata.group_resolver import (
     resolve_group_files
 )
 
 from webhook import log_to_discord
+
+from bot import send_message
 
 
 def is_group_token(token):
@@ -29,39 +35,58 @@ def process_group_start(
         return False
 
     try:
-        files = resolve_group_files(group)
+        resolved = resolve_group_files(group)
+
+        files = resolved["files"]
+
+        missing = resolved["missing_episodes"]
 
         if not files:
-            return False
+            send_message(
+                chat_id,
+                "❌ Group has no files"
+            )
 
-        # 🚫 DELIVERY NOT IMPLEMENTED YET
-        # future:
-        #
-        # queue_group_delivery(
-        #     chat_id,
-        #     files,
-        #     user
-        # )
+            return True
+
+        username = user.get("first_name", "User")
+
+        queued = queue_group_delivery(
+            chat_id=chat_id,
+            files=files,
+            username=username
+        )
+
+        if not queued:
+            send_message(
+                chat_id,
+                "⚠️ Delivery already running"
+            )
+
+            return True
+
+        if missing:
+            send_message(
+                chat_id,
+                f"⚠️ Missing Episodes: {missing[:10]}"
+            )
 
         log_to_discord(
-            "Group token accessed",
+            "Grouped delivery started",
             "access",
             "info",
             fields={
                 "user_id": user_id,
                 "group": group.get("title"),
-                "files": len(files)
+                "count": len(files)
             }
         )
 
-        return {
-            "group": group,
-            "files": files
-        }
+        return True
 
     except Exception as e:
         log_to_discord(
-            "Group start failed",
+            "Group delivery failed",
             "status",
             "error",
             fields={
@@ -70,4 +95,9 @@ def process_group_start(
             }
         )
 
-        return False
+        send_message(
+            chat_id,
+            "❌ Group delivery failed"
+        )
+
+        return True
