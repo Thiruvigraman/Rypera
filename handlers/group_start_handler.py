@@ -145,3 +145,9 @@ def handle_start_token(chat_id, token, user):
 
 # backward compatibility
 process_group_start = handle_start_token
+
+
+def is_group_token(token):
+    group = get_group_by_token(token)
+
+    return group is not None
