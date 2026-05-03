@@ -14,6 +14,21 @@ from commands.cmd import handle_cmd
 from commands.create_groups import (
     handle_create_groups
 )
+from commands.migrate_tokens import (
+    handle_migrate_tokens
+)
+
+from commands.migrate_metadata import (
+    handle_migrate_metadata
+)
+
+from commands.group_search import (
+    handle_group_search
+)
+
+from commands.list_groups import (
+    handle_list_groups
+)
 
 
 def process_admin_commands(
