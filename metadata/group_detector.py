@@ -1,4 +1,4 @@
- # file: services/metadata/group_detector.py
+ # file: metadata/group_detector.py
 
 from collections import defaultdict
 
