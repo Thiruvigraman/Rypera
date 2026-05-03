@@ -7,7 +7,6 @@ from queue import Queue
 from bot import send_file
 from webhook import log_to_discord
 
-
 GROUP_SEND_QUEUE = Queue()
 
 QUEUE_WORKER_STARTED = False
@@ -34,7 +33,8 @@ def queue_group_delivery(
     chat_id,
     files,
     username=None,
-    group_name=None
+    group_name=None,
+    group_token=None
 ):
     if not files:
         return False
@@ -44,6 +44,7 @@ def queue_group_delivery(
         "files": files,
         "username": username,
         "group_name": group_name,
+        "group_token": group_token,
         "timestamp": time.time()
     })
 
@@ -52,6 +53,8 @@ def queue_group_delivery(
 
 def group_queue_worker():
     while True:
+        job = None
+
         try:
             job = GROUP_SEND_QUEUE.get()
 
@@ -71,10 +74,14 @@ def group_queue_worker():
             )
 
         finally:
-            GROUP_SEND_QUEUE.task_done()
+            if job:
+                GROUP_SEND_QUEUE.task_done()
 
 
 def process_group_delivery(job):
+    from database.movies import increment_movie_access
+    from database.groups import increment_group_access
+
     chat_id = job["chat_id"]
 
     files = job["files"]
@@ -83,11 +90,19 @@ def process_group_delivery(job):
 
     group_name = job.get("group_name")
 
+    group_token = job.get("group_token")
+
     total = len(files)
 
     success = 0
 
     failed = 0
+
+    if group_token:
+        try:
+            increment_group_access(group_token)
+        except Exception:
+            pass
 
     for index, movie in enumerate(files, start=1):
         file_id = movie.get("file_id")
@@ -100,7 +115,7 @@ def process_group_delivery(job):
 
         delivered = False
 
-        for attempt in range(MAX_RETRIES):
+        for _ in range(MAX_RETRIES):
             try:
                 result = send_file(
                     chat_id,
@@ -112,7 +127,14 @@ def process_group_delivery(job):
 
                 if result and result.get("ok"):
                     delivered = True
+
                     success += 1
+
+                    try:
+                        increment_movie_access(movie_name)
+                    except Exception:
+                        pass
+
                     break
 
             except Exception:
