@@ -1,17 +1,17 @@
 # file: commands/search.py
 
 import math
-import re
+
+from database.movies import load_movies_full
+from database.groups import search_groups
 
 from bot import (
-    edit_message,
-    send_message
+    send_message,
+    edit_message
 )
 
 from config import BOT_USERNAME
 
-from database.groups import search_groups
-from database.movies import load_movies
 
 SEARCH_CACHE = {}
 
@@ -22,93 +22,18 @@ def normalize(text):
     return text.lower().strip()
 
 
-# ================= OLD PARSER =================
-
-def parse_name(name):
-    name_lower = name.lower()
-
-    quality_match = re.search(
-        r'(480p|720p|1080p|hdrip|bluray)',
-        name_lower
-    )
-
-    quality = (
-        quality_match.group(1)
-        if quality_match
-        else "unknown"
-    )
-
-    se_match = re.search(
-        r's(\d+)e(\d+)',
-        name_lower
-    )
-
-    if se_match:
-        return {
-            "type": "season",
-            "key": f"S{se_match.group(1)}E{se_match.group(2)}",
-            "quality": quality
-        }
-
-    ep_match = re.search(
-        r'\b(\d{3,4})\b',
-        name_lower
-    )
-
-    if ep_match:
-        return {
-            "type": "episode",
-            "key": ep_match.group(1),
-            "quality": quality
-        }
-
-    return {
-        "type": "other",
-        "key": name,
-        "quality": quality
-    }
-
-
-# ================= OLD FILE GROUPING =================
-
-def group_movies(movies):
-    grouped = {}
-
-    for name, data in movies.items():
-        parsed = parse_name(name)
-
-        key = parsed["key"]
-
-        quality = parsed["quality"]
-
-        if key not in grouped:
-            grouped[key] = []
-
-        grouped[key].append({
-            "name": name,
-            "quality": quality,
-            "file_id": data["file_id"],
-            "token": data.get("token")
-        })
-
-    return grouped
-
-
-# ================= GROUPED SEARCH =================
-
 def build_group_section(groups):
-    text = ""
+    if not groups:
+        return ""
 
-    for group in groups:
-        title = group.get("title") or "Unknown"
+    text = "📦 Grouped Results\n\n"
+
+    for index, group in enumerate(groups, start=1):
+        title = group.get("title")
 
         quality = group.get("quality") or "unknown"
 
         audio = group.get("audio") or "unknown"
-
-        season = group.get("season")
-
-        arc = group.get("arc")
 
         start_ep = group.get("start_episode")
 
@@ -122,65 +47,113 @@ def build_group_section(groups):
             f"?start={token}"
         )
 
-        label = None
+        label = title
 
-        if arc:
-            label = arc
-
-        elif season:
-            label = f"Season {season}"
-
-        else:
-            label = f"Episodes {start_ep}-{end_ep}"
+        if start_ep and end_ep:
+            label += f" • {start_ep}-{end_ep}"
 
         text += (
-            f"📦 {title}\n"
-            f"🎞 {label}\n"
-            f"📺 {quality}\n"
-            f"🎧 {audio}\n"
+            f"{index}. 📦 {label}\n"
+            f"🎞 {quality} | 🔊 {audio}\n"
             f"🔗 {link}\n\n"
         )
 
     return text
 
 
-# ================= OLD TEXT =================
+def group_individual_movies(movies):
+    grouped = {}
 
-def build_file_text(groups, page, total_pages):
-    keys = list(groups.keys())
+    for movie in movies:
+        metadata = movie.get("metadata", {})
+
+        title = metadata.get("title") or movie.get("name")
+
+        quality = metadata.get("quality") or "unknown"
+
+        audio = metadata.get("audio") or "unknown"
+
+        episode = metadata.get("episode")
+
+        key = (
+            title,
+            quality,
+            audio
+        )
+
+        if key not in grouped:
+            grouped[key] = []
+
+        grouped[key].append({
+            "name": movie.get("name"),
+            "token": movie.get("token"),
+            "episode": episode,
+            "quality": quality,
+            "audio": audio
+        })
+
+    return grouped
+
+
+def build_individual_section(grouped, page, total_pages):
+    keys = list(grouped.keys())
 
     start = (page - 1) * PER_PAGE
 
     chunk_keys = keys[start:start + PER_PAGE]
 
     text = (
-        f"🎬 File Results "
+        f"🎬 Individual Results "
         f"(Page {page}/{total_pages})\n\n"
     )
 
     for key in chunk_keys:
-        items = groups[key]
+        items = grouped[key]
 
-        text += f"🎬 {key}\n"
+        title, quality, audio = key
 
-        for item in items:
+        text += (
+            f"🎞 {title} "
+            f"| {quality} "
+            f"| {audio}\n"
+        )
+
+        sorted_items = sorted(
+            items,
+            key=lambda x: (
+                x.get("episode") or 0
+            )
+        )
+
+        for item in sorted_items:
+            token = item.get("token")
+
+            if not token:
+                continue
+
+            episode = item.get("episode")
+
             link = (
                 f"https://t.me/"
                 f"{BOT_USERNAME}"
-                f"?start={item['token']}"
+                f"?start={token}"
             )
 
-            text += (
-                f"{item['quality']} "
-                f"→ {link}\n"
-            )
+            if episode:
+                text += (
+                    f"EP {episode} → "
+                    f"{link}\n"
+                )
+            else:
+                text += (
+                    f"{item['name']} → "
+                    f"{link}\n"
+                )
 
         text += "\n"
 
     return text
 
-
-# ================= KEYBOARD =================
 
 def build_keyboard(page, total_pages):
     buttons = []
@@ -197,14 +170,19 @@ def build_keyboard(page, total_pages):
             "callback_data": f"search_{page+1}"
         })
 
+    if not buttons:
+        return None
+
     return {
         "inline_keyboard": [buttons]
-    } if buttons else None
+    }
 
 
-# ================= PAGE =================
-
-def send_search_page(chat_id, page, message_id=None):
+def send_search_page(
+    chat_id,
+    page,
+    message_id=None
+):
     cache = SEARCH_CACHE.get(chat_id)
 
     if not cache:
@@ -214,11 +192,11 @@ def send_search_page(chat_id, page, message_id=None):
         )
         return
 
+    grouped_movies = cache["grouped_movies"]
+
     grouped_results = cache["grouped_results"]
 
-    file_groups = cache["file_groups"]
-
-    total = len(file_groups)
+    total = len(grouped_movies)
 
     total_pages = max(
         1,
@@ -230,18 +208,13 @@ def send_search_page(chat_id, page, message_id=None):
 
     text = ""
 
-    # grouped section only on first page
-    if page == 1 and grouped_results:
-        text += "📦 GROUP RESULTS\n\n"
-
+    if page == 1:
         text += build_group_section(
             grouped_results
         )
 
-        text += "────────────\n\n"
-
-    text += build_file_text(
-        file_groups,
+    text += build_individual_section(
+        grouped_movies,
         page,
         total_pages
     )
@@ -258,7 +231,6 @@ def send_search_page(chat_id, page, message_id=None):
             text,
             keyboard
         )
-
     else:
         send_message(
             chat_id,
@@ -267,44 +239,64 @@ def send_search_page(chat_id, page, message_id=None):
         )
 
 
-# ================= MAIN SEARCH =================
-
 def handle_search(chat_id, text):
     parts = text.split(maxsplit=1)
 
     if len(parts) < 2:
-        return send_message(
+        send_message(
             chat_id,
             "❌ Usage: /search name"
         )
+        return
 
     query = normalize(parts[1])
 
-    # ================= GROUP SEARCH =================
+    all_movies = load_movies_full()
 
-    grouped_results = search_groups(query)
+    filtered_movies = []
 
-    # ================= OLD FILE SEARCH =================
+    for movie in all_movies:
+        name = movie.get("name", "")
 
-    movies = load_movies()
+        metadata = movie.get("metadata", {})
 
-    filtered = {
-        name: data
-        for name, data in movies.items()
-        if query in normalize(name)
-    }
+        title = metadata.get("title", "")
 
-    if not filtered and not grouped_results:
-        return send_message(
+        arc = metadata.get("arc", "")
+
+        season = str(
+            metadata.get("season", "")
+        )
+
+        searchable = (
+            f"{name} "
+            f"{title} "
+            f"{arc} "
+            f"{season}"
+        ).lower()
+
+        if query in searchable:
+            filtered_movies.append(movie)
+
+    if not filtered_movies:
+        send_message(
             chat_id,
             "❌ No results found"
         )
+        return
 
-    file_groups = group_movies(filtered)
+    grouped_movies = group_individual_movies(
+        filtered_movies
+    )
+
+    grouped_results = search_groups(query)
 
     SEARCH_CACHE[chat_id] = {
-        "grouped_results": grouped_results,
-        "file_groups": file_groups
+        "grouped_movies": grouped_movies,
+        "grouped_results": grouped_results
     }
 
-    send_search_page(chat_id, 1)
+    send_search_page(
+        chat_id,
+        1
+    )
