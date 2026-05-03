@@ -81,6 +81,22 @@ def load_movies():
 
         return {}
 
+def load_movies_full():
+    if not MONGO_AVAILABLE:
+        return []
+
+    try:
+        return list(
+            movies_collection.find(
+                {},
+                {
+                    "_id": 0
+                }
+            )
+        )
+
+    except Exception:
+        return []
 
 def load_movies_cached():
     return load_movies()
