@@ -110,10 +110,6 @@ def save_movie(name, file_id):
 
     try:
         existing = movies_collection.find_one({
-    "name": name
-})
-
-         existing = movies_collection.find_one({
             "name": name
         })
 
@@ -122,13 +118,12 @@ def save_movie(name, file_id):
         else:
             token = generate_unique_token()
 
-        # ================= METADATA
- =================
-
         metadata = parse_filename(name)
 
         movies_collection.update_one(
-            {"name": name},
+            {
+                "name": name
+            },
             {
                 "$set": {
                     "name": name,
@@ -143,8 +138,6 @@ def save_movie(name, file_id):
             },
             upsert=True
         )
-
-        # ================= CACHE =================
 
         if REDIS_AVAILABLE:
 
@@ -180,7 +173,6 @@ def save_movie(name, file_id):
         )
 
         return None
-
 
 # ================= GET =================
 
