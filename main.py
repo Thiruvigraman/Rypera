@@ -18,7 +18,7 @@ from database import setup_log_ttl
 from database.group_queue import start_group_worker
 from concurrent.futures import ThreadPoolExecutor
 
-EXECUTOR = ThreadPoolExecutor(max_workers=20)
+EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 app = Flask(__name__)
 
