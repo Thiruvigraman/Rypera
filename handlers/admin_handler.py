@@ -72,6 +72,10 @@ def process_admin_commands(
         handle_list_movies(chat_id, user)
         return True
 
+    if text == "/list_groups":
+        handle_list_groups(chat_id)
+        return
+
     if text == "/create_groups":
         handle_create_groups(chat_id, user)
         return True
