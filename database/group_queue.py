@@ -9,24 +9,29 @@ from webhook import log_to_discord
 
 GROUP_SEND_QUEUE = Queue()
 
-QUEUE_WORKER_STARTED = False
+QUEUE_WORKERS_STARTED = False
+
+WORKER_COUNT = 2
 
 SEND_DELAY = 1.2
 MAX_RETRIES = 3
 
+MAX_GROUP_FILES = 300
+
 
 def start_group_worker():
-    global QUEUE_WORKER_STARTED
+    global QUEUE_WORKERS_STARTED
 
-    if QUEUE_WORKER_STARTED:
+    if QUEUE_WORKERS_STARTED:
         return
 
-    QUEUE_WORKER_STARTED = True
+    QUEUE_WORKERS_STARTED = True
 
-    threading.Thread(
-        target=group_queue_worker,
-        daemon=True
-    ).start()
+    for _ in range(WORKER_COUNT):
+        threading.Thread(
+            target=group_queue_worker,
+            daemon=True
+        ).start()
 
 
 def queue_group_delivery(
@@ -61,6 +66,7 @@ def group_queue_worker():
             if not job:
                 continue
 
+            if len(files) > MAX_GROUP_FILES:
             process_group_delivery(job)
 
         except Exception as e:
