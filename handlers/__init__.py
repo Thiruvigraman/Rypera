@@ -9,7 +9,7 @@ current_dir = os.path.dirname(__file__)
 root_handlers_path = os.path.join(
     current_dir,
     "..",
-    "handlers.py"
+    "main_handler.py"
 )
 
 spec = importlib.util.spec_from_file_location(
