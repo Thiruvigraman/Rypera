@@ -1,29 +1,16 @@
 # file: scripts/migrate_metadata.py
 
-from database.connection import (
-    MONGO_AVAILABLE,
-    movies_collection
-)
-
-from services.metadata.parser import parse_metadata
+from database.connection import movies_collection
+from metadata.parser import parse_filename
 
 
 def migrate_metadata():
-    if not MONGO_AVAILABLE:
-        print("MongoDB unavailable")
-        return
-
-    total = 0
     updated = 0
     skipped = 0
 
-    print("Starting metadata migration...\n")
+    cursor = movies_collection.find({})
 
-    movies = movies_collection.find({})
-
-    for movie in movies:
-        total += 1
-
+    for movie in cursor:
         name = movie.get("name")
 
         if not name:
@@ -31,45 +18,31 @@ def migrate_metadata():
             continue
 
         # already migrated
-        if (
-            "title" in movie and
-            "quality" in movie and
-            "audio" in movie
-        ):
+        if movie.get("metadata"):
             skipped += 1
             continue
 
-        metadata = parse_metadata(name)
+        metadata = parse_filename(name)
 
-        try:
-            movies_collection.update_one(
-                {"_id": movie["_id"]},
-                {
-                    "$set": {
-                        "title": metadata["title"],
-                        "episode": metadata["episode"],
-                        "season": metadata["season"],
-                        "quality": metadata["quality"],
-                        "audio": metadata["audio"]
-                    }
+        movies_collection.update_one(
+            {"_id": movie["_id"]},
+            {
+                "$set": {
+                    "metadata": metadata
                 }
-            )
+            }
+        )
 
-            updated += 1
+        updated += 1
 
-            print(f"UPDATED: {name}")
-            print(metadata)
-            print("-" * 50)
+        print(f"UPDATED: {name}")
+        print(metadata)
+        print("-" * 50)
 
-        except Exception as e:
-            print(f"FAILED: {name}")
-            print(str(e))
-            print("-" * 50)
-
-    print("\nMigration completed")
-    print(f"Total   : {total}")
-    print(f"Updated : {updated}")
-    print(f"Skipped : {skipped}")
+    print()
+    print("========== DONE ==========")
+    print(f"UPDATED : {updated}")
+    print(f"SKIPPED : {skipped}")
 
 
 if __name__ == "__main__":
