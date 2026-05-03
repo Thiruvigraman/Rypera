@@ -17,14 +17,10 @@ from webhook import log_to_discord
 
 from rate_limiter import is_rate_limited
 
-from commands.upload_movie import (
-    handle_upload,
-    handle_upload_name
-)
-
 from handlers.callback_handler import process_callback
 from handlers.start_handler import process_start
 from handlers.admin_handler import process_admin_commands
+from handlers.upload_handler import process_upload
 
 
 PROCESSED_UPDATES = set()
@@ -108,12 +104,6 @@ def process_update(update):
         if is_admin(user_id):
             webhook.ADMIN_ALERT_CHAT_ID = chat_id
 
-        # ================= FILE UPLOAD =================
-
-        if "document" in msg and is_admin(user_id):
-            handle_upload(chat_id, msg, user)
-            return
-
         # ================= RATE LIMIT =================
 
         if not is_admin(user_id) and is_rate_limited(user_id):
@@ -121,11 +111,18 @@ def process_update(update):
 
         text = (msg.get("text") or "").strip()
 
-        # ================= UPLOAD NAME =================
+        # ================= UPLOAD FLOW =================
 
-        if is_admin(user_id) and text and not text.startswith("/"):
-            if handle_upload_name(chat_id, text, user):
-                return
+        handled_upload = process_upload(
+            msg=msg,
+            chat_id=chat_id,
+            user=user,
+            user_id=user_id,
+            is_admin=is_admin
+        )
+
+        if handled_upload:
+            return
 
         # ================= REGISTER USER =================
 
