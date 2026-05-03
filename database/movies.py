@@ -4,6 +4,7 @@ import secrets
 import string
 
 from webhook import log_to_discord
+
 from redis_client import (
     get_cache,
     set_cache,
@@ -23,7 +24,11 @@ from .connection import (
 
 def generate_token(length=10):
     chars = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(chars) for _ in range(length))
+
+    return ''.join(
+        secrets.choice(chars)
+        for _ in range(length)
+    )
 
 
 def generate_unique_token():
@@ -44,33 +49,44 @@ def load_movies():
 
     try:
         return {
-            doc['name']: {
-                "file_id": doc['file_id'],
-                "token": doc.get("token")
+            doc["name"]: {
+                "file_id": doc["file_id"],
+                "token": doc.get("token"),
+                "metadata": doc.get("metadata", {})
             }
+
             for doc in movies_collection.find(
                 {},
                 {
                     "name": 1,
                     "file_id": 1,
                     "token": 1,
+                    "metadata": 1,
                     "_id": 0
                 }
             )
         }
 
-    except Exception:
+    except Exception as e:
+        print("LOAD MOVIES ERROR:", str(e))
+
         log_to_discord(
             "Load movies failed",
             "status",
-            "error"
+            "error",
+            fields={
+                "error": str(e)
+            }
         )
+
         return {}
 
 
 def load_movies_cached():
     return load_movies()
 
+
+# ================= SAVE =================
 
 def save_movie(name, file_id):
     if not name or not file_id or not MONGO_AVAILABLE:
@@ -79,21 +95,20 @@ def save_movie(name, file_id):
     try:
         token = generate_unique_token()
 
-        metadata = parse_metadata(name)
+        # ================= METADATA =================
+
+        metadata = parse_filename(name)
 
         movies_collection.update_one(
             {"name": name},
             {
                 "$set": {
                     "name": name,
-                    "title": metadata["title"],
-                    "episode": metadata["episode"],
-                    "season": metadata["season"],
-                    "quality": metadata["quality"],
-                    "audio": metadata["audio"],
                     "file_id": file_id,
-                    "token": token
+                    "token": token,
+                    "metadata": metadata
                 },
+
                 "$setOnInsert": {
                     "access_count": 0
                 }
@@ -101,12 +116,16 @@ def save_movie(name, file_id):
             upsert=True
         )
 
+        # ================= CACHE =================
+
         if REDIS_AVAILABLE:
+
             set_cache(
                 f"movie:{name}",
                 {
                     "file_id": file_id,
-                    "token": token
+                    "token": token,
+                    "metadata": metadata
                 },
                 ttl=3600
             )
@@ -125,39 +144,57 @@ def save_movie(name, file_id):
         log_to_discord(
             "Save movie failed",
             "status",
-            "error"
+            "error",
+            fields={
+                "movie": name,
+                "error": str(e)
+            }
         )
 
         return None
 
 
+# ================= GET =================
+
 def get_movie_by_token(token):
     if not token:
         return None
 
+    # ================= REDIS =================
+
     if REDIS_AVAILABLE:
+
         name = get_cache(f"token:{token}")
 
         if name:
             movie = get_cache(f"movie:{name}")
 
             if movie:
-                return {"name": name, **movie}
+                return {
+                    "name": name,
+                    **movie
+                }
+
+    # ================= MONGO =================
 
     if not MONGO_AVAILABLE:
         return None
 
     try:
-        movie = movies_collection.find_one({"token": token})
+        movie = movies_collection.find_one({
+            "token": token
+        })
 
         if movie and REDIS_AVAILABLE:
+
             name = movie["name"]
 
             set_cache(
                 f"movie:{name}",
                 {
                     "file_id": movie["file_id"],
-                    "token": movie["token"]
+                    "token": movie["token"],
+                    "metadata": movie.get("metadata", {})
                 },
                 ttl=3600
             )
@@ -170,68 +207,85 @@ def get_movie_by_token(token):
 
         return movie
 
-    except Exception:
+    except Exception as e:
+        print("GET MOVIE ERROR:", str(e))
         return None
 
+
+# ================= DELETE =================
 
 def delete_movie(name):
     if not MONGO_AVAILABLE:
         return
 
     try:
-        movie = movies_collection.find_one({"name": name})
+        movie = movies_collection.find_one({
+            "name": name
+        })
 
-        movies_collection.delete_one({"name": name})
+        movies_collection.delete_one({
+            "name": name
+        })
 
         if REDIS_AVAILABLE and movie:
+
             delete_cache(f"movie:{name}")
             delete_cache(f"token:{movie.get('token')}")
 
-    except Exception:
-        pass
+    except Exception as e:
+        print("DELETE MOVIE ERROR:", str(e))
 
+
+# ================= RENAME =================
 
 def rename_movie(old_name, new_name):
     if not MONGO_AVAILABLE:
         return False
 
     try:
-        movie = movies_collection.find_one({"name": old_name})
+        movie = movies_collection.find_one({
+            "name": old_name
+        })
 
         if not movie:
             return False
 
-        metadata = parse_metadata(new_name)
+        metadata = parse_filename(new_name)
 
-        movies_collection.delete_one({"name": old_name})
+        movies_collection.delete_one({
+            "name": old_name
+        })
 
         movies_collection.insert_one({
             "name": new_name,
-            "title": metadata["title"],
-            "episode": metadata["episode"],
-            "season": metadata["season"],
-            "quality": metadata["quality"],
-            "audio": metadata["audio"],
+
             "file_id": movie["file_id"],
+
             "token": movie.get("token"),
+
+            "metadata": metadata,
+
             "access_count": movie.get("access_count", 0)
         })
 
         if REDIS_AVAILABLE:
+
             delete_cache(f"movie:{old_name}")
 
             set_cache(
                 f"movie:{new_name}",
                 {
                     "file_id": movie["file_id"],
-                    "token": movie.get("token")
+                    "token": movie.get("token"),
+                    "metadata": metadata
                 },
                 ttl=3600
             )
 
         return True
 
-    except Exception:
+    except Exception as e:
+        print("RENAME MOVIE ERROR:", str(e))
         return False
 
 
@@ -244,7 +298,11 @@ def increment_movie_access(name):
     try:
         movies_collection.update_one(
             {"name": name},
-            {"$inc": {"access_count": 1}},
+            {
+                "$inc": {
+                    "access_count": 1
+                }
+            },
             upsert=True
         )
 
