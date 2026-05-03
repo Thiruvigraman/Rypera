@@ -14,6 +14,7 @@ QUEUE_WORKERS_STARTED = False
 WORKER_COUNT = 2
 
 SEND_DELAY = 1.2
+
 MAX_RETRIES = 3
 
 MAX_GROUP_FILES = 300
@@ -44,6 +45,19 @@ def queue_group_delivery(
     if not files:
         return False
 
+    if len(files) > MAX_GROUP_FILES:
+        log_to_discord(
+            "Group too large",
+            "status",
+            "warning",
+            fields={
+                "group": group_name,
+                "count": len(files)
+            }
+        )
+
+        return False
+
     GROUP_SEND_QUEUE.put({
         "chat_id": chat_id,
         "files": files,
@@ -66,7 +80,6 @@ def group_queue_worker():
             if not job:
                 continue
 
-            if len(files) > MAX_GROUP_FILES:
             process_group_delivery(job)
 
         except Exception as e:
