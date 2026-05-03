@@ -18,6 +18,9 @@ from commands.list_movies import (
     handle_list_movies,
     send_page
 )
+from commands.group_search import (
+    handle_group_search
+)
 from commands.rename_file import handle_rename
 from commands.search import (
     handle_search,
