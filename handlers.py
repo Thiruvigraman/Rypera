@@ -1,80 +1,25 @@
-# file: handlers.py
+# file : handlers.py
 
 from threading import Lock
 
-import requests
-import time
-
-import webhook
-
-from bot import send_file, send_message
-
-from commands.announcement import handle_announcement
-from commands.cmd import handle_cmd
-from commands.delete_movie import handle_delete_movie
-from commands.generate_link import handle_generate_link
-from commands.health import handle_health
-from commands.list_movies import (
-    handle_list_movies,
-    send_page
-)
-from commands.migrate_tokens import (
-    handle_migrate_tokens
-)
-from commands.migrate_metadata import (
-    handle_migrate_metadata
-)
-from commands.list_groups import (
-    handle_list_groups
-)
-from commands.group_search import (
-    handle_group_search
-)
-from commands.rename_file import handle_rename
-from commands.search import (
-    handle_search,
-    send_search_page
-)
-from commands.stats import handle_stats
-from commands.top_movies import handle_top_movies
-from commands.upload_movie import (
-    handle_upload,
-    handle_upload_name
-)
-from commands.create_groups import handle_create_groups
-
-from config import (
-    ADMIN_IDS,
-    BOT_TOKEN,
-    BOT_USERNAME
+from handlers.callback_handler import (
+    process_callback
 )
 
-from database import (
-    add_user,
-    delete_movie,
-    get_all_users,
-    get_movie_by_token,
-    increment_movie_access,
-    is_db_available,
-    load_movies_cached,
-    save_access_log
+from handlers.message_handler import (
+    process_message
 )
-
-from handlers.group_start_handler import (
-    process_group_start,
-    is_group_token
-)
-
-from rate_limiter import is_rate_limited
 
 from webhook import (
-    clear_all_logs,
-    get_log_queue_size,
-    is_frozen,
-    is_logging_enabled,
-    log_to_discord,
-    set_freeze,
-    set_logging,
+    log_to_discord
+)
+
+from bot import (
+    send_message
+)
+
+from config import (
+    ADMIN_IDS
 )
 
 PROCESSED_UPDATES = set()
@@ -90,13 +35,6 @@ ADMIN_ID_SET = set(map(str, ADMIN_IDS))
 
 def is_admin(user_id):
     return str(user_id) in ADMIN_ID_SET
-
-
-def get_user_name(user):
-    if user.get("username"):
-        return f"@{user['username']}"
-
-    return user.get("first_name", "User")
 
 
 def safe_send(chat_id, text):
@@ -121,6 +59,7 @@ def process_update(update):
         update_id = update.get("update_id")
 
         with UPDATE_LOCK:
+
             if update_id in PROCESSED_UPDATES:
                 return
 
@@ -132,436 +71,32 @@ def process_update(update):
         # ================= CALLBACK =================
 
         if "callback_query" in update:
-            query = update["callback_query"]
 
-            data = query.get("data")
-
-            user_id = query["from"]["id"]
-
-            chat_id = query["message"]["chat"]["id"]
-
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                json={
-                    "callback_query_id": query["id"]
-                },
-                timeout=5
-            )
-
-            # ===== LIST PAGINATION =====
-
-            if data and data.startswith("list_"):
-                try:
-                    page = int(data.split("_")[1])
-
-                    message_id = query["message"]["message_id"]
-
-                    send_page(
-                        chat_id,
-                        page,
-                        message_id
-                    )
-
-                except Exception as e:
-                    log_to_discord(
-                        "Pagination error",
-                        "status",
-                        "error",
-                        fields={
-                            "error": str(e)
-                        }
-                    )
-
-                return
-
-            # ===== SEARCH PAGINATION =====
-
-            if data and data.startswith("search_"):
-                try:
-                    page = int(data.split("_")[1])
-
-                    message_id = query["message"]["message_id"]
-
-                    send_search_page(
-                        chat_id,
-                        page,
-                        message_id
-                    )
-
-                except Exception as e:
-                    log_to_discord(
-                        "Search pagination error",
-                        "status",
-                        "error",
-                        fields={
-                            "error": str(e)
-                        }
-                    )
-
-                return
-
-            # ===== GET LINK =====
-
-            if data and data.startswith("getlink_"):
-                try:
-                    token = data.split("_", 1)[1]
-
-                    link = (
-                        f"https://t.me/"
-                        f"{BOT_USERNAME}"
-                        f"?start={token}"
-                    )
-
-                    send_message(
-                        chat_id,
-                        f"🔗 {link}"
-                    )
-
-                except Exception as e:
-                    log_to_discord(
-                        "Get link error",
-                        "status",
-                        "error",
-                        fields={
-                            "error": str(e)
-                        }
-                    )
-
-                return
-
-            # ===== ANNOUNCE =====
-
-            if data == "announce_confirm" and is_admin(user_id):
-                announcement = PENDING_ANNOUNCEMENT.get(user_id)
-
-                if not announcement:
-                    safe_send(
-                        chat_id,
-                        "No pending announcement"
-                    )
-
-                    return
-
-                users = get_all_users()
-
-                success = 0
-
-                failed = 0
-
-                for u in users:
-                    res = send_message(
-                        u["user_id"],
-                        announcement
-                    )
-
-                    if res and res.get("ok"):
-                        success += 1
-                    else:
-                        failed += 1
-
-                    time.sleep(0.01)
-
-                PENDING_ANNOUNCEMENT.pop(
-                    user_id,
-                    None
-                )
-
-                safe_send(
-                    chat_id,
-                    (
-                        f"✅ Sent\n"
-                        f"Success: {success}\n"
-                        f"Failed: {failed}"
-                    )
-                )
-
-                return
-
-            if data == "announce_cancel" and is_admin(user_id):
-                PENDING_ANNOUNCEMENT.pop(
-                    user_id,
-                    None
-                )
-
-                safe_send(
-                    chat_id,
-                    "❌ Announcement cancelled"
-                )
-
-                return
-
-            # ===== DELETE =====
-
-            if data == "delete_confirm" and is_admin(user_id):
-                d = PENDING_DELETE.get(user_id)
-
-                if not d:
-                    safe_send(
-                        chat_id,
-                        "No pending delete"
-                    )
-
-                    return
-
-                delete_movie(d["movie"])
-
-                PENDING_DELETE.pop(
-                    user_id,
-                    None
-                )
-
-                safe_send(
-                    chat_id,
-                    f"🗑 Deleted: {d['movie']}"
-                )
-
-                return
-
-            if data == "delete_cancel" and is_admin(user_id):
-                PENDING_DELETE.pop(
-                    user_id,
-                    None
-                )
-
-                safe_send(
-                    chat_id,
-                    "❌ Cancelled"
-                )
-
-                return
-
-        # ================= MESSAGE =================
-
-        if "message" not in update:
-            return
-
-        msg = update["message"]
-
-        chat_id = msg["chat"]["id"]
-
-        user = msg["from"]
-
-        user_id = user["id"]
-
-        if is_admin(user_id):
-            webhook.ADMIN_ALERT_CHAT_ID = chat_id
-
-        # ===== FILE UPLOAD =====
-
-        if "document" in msg and is_admin(user_id):
-            handle_upload(
-                chat_id,
-                msg,
-                user
-            )
-
-            return
-
-        # ===== RATE LIMIT =====
-
-        if not is_admin(user_id):
-            if is_rate_limited(user_id):
-                return
-
-        text = (msg.get("text") or "").strip()
-
-        # ===== UPLOAD NAME =====
-
-        if (
-            is_admin(user_id)
-            and text
-            and not text.startswith("/")
-        ):
-            if handle_upload_name(
-                chat_id,
-                text,
-                user
-            ):
-                return
-
-        # ===== REGISTER USER =====
-
-        if not is_admin(user_id):
-            add_user(
-                user_id,
-                user.get("first_name", "User")
-            )
-
-        if not text and not is_admin(user_id):
-            return
-
-        if not is_db_available():
-            safe_send(
-                chat_id,
-                "⚠️ Database unavailable"
-            )
-
-            return
-
-        # ================= ADMIN COMMANDS =================
-
-        if is_admin(user_id):
-
-            if text == "/cmd":
-                try:
-                    handle_cmd(chat_id)
-
-                except Exception as e:
-                    log_to_discord(
-                        "CMD handler failed",
-                        "status",
-                        "error",
-                        fields={
-                            "error": str(e)
-                        }
-                    )
-
-                    safe_send(
-                        chat_id,
-                        f"❌ CMD error:\n{str(e)}"
-                    )
-
-                return
-
-            if text.startswith("/generate_link"):
-                handle_generate_link(
-                    chat_id,
-                    text,
-                    user
-                )
-
-                return
-
-            if text.startswith("/delete_movie"):
-                handle_delete_movie(
-                    chat_id,
-                    text,
-                    user_id,
-                    PENDING_DELETE,
-                    user
-                )
-
-                return
-
-            if text.startswith("/rename_file"):
-                handle_rename(
-                    chat_id,
-                    text,
-                    user
-                )
-
-                return
-
-            if text.startswith("/announce"):
-                handle_announcement(
-                    chat_id,
-                    text,
-                    user_id,
-                    PENDING_ANNOUNCEMENT,
-                    user
-                )
-
-                return
-
-            if text == "/stats":
-                handle_stats(
-                    chat_id,
-                    user
-                )
-
-                return
-
-            if text == "/top_movies":
-                handle_top_movies(
-                    chat_id,
-                    user
-                )
-
-                return
-
-            if text == "/health":
-                handle_health(
-                    chat_id,
-                    user
-                )
-
-                return
-
-            if text == "/list_movies":
-                handle_list_movies(
-                    chat_id,
-                    user
-                )
-
-                return
-
-            if text.startswith("/search"):
-                handle_search(
-                    chat_id,
-                    text
-                )
-
-                return
-
-            if text.startswith("/gsearch"):
-                handle_group_search(
-                    chat_id,
-                    text.replace("/gsearch", "", 1).strip()
-                )
-
-                return
-
-            if text == "/create_groups":
-                handle_create_groups(
-                    chat_id
-                )
-
-                return
-
-            if text == "/migrate_metadata":
-                handle_migrate_metadata(
-                    chat_id
-                )
-
-                return
-
-            if text == "/migrate_tokens":
-                handle_migrate_tokens(
-                    chat_id
-                )
-
-                return
-
-        # ================= START =================
-
-        if text.startswith("/start "):
-            query = text.split(" ", 1)[1].strip()
-
-            handled = process_group_start(
-                token=query,
-                chat_id=chat_id,
-                user=user
+            handled = process_callback(
+                query=update["callback_query"],
+                is_admin=is_admin,
+                safe_send=safe_send,
+                pending_delete=PENDING_DELETE,
+                pending_announcement=PENDING_ANNOUNCEMENT
             )
 
             if handled:
                 return
 
-            safe_send(
-                chat_id,
-                "❌ Invalid or expired link"
+        # ================= MESSAGE =================
+
+        if "message" in update:
+
+            handled = process_message(
+                msg=update["message"],
+                is_admin=is_admin,
+                safe_send=safe_send,
+                pending_delete=PENDING_DELETE,
+                pending_announcement=PENDING_ANNOUNCEMENT
             )
 
-            log_to_discord(
-                "Invalid link attempt",
-                "access",
-                "warning",
-                fields={
-                    "user_id": user_id,
-                    "query": query
-                }
-            )
-
-            return
+            if handled:
+                return
 
     except Exception as e:
         log_to_discord(
