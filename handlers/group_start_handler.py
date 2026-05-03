@@ -6,8 +6,7 @@ from database.movies import (
 )
 
 from database.groups import (
-    get_group_by_token,
-    increment_group_access
+    get_group_by_token
 )
 
 from database.group_queue import (
@@ -30,9 +29,7 @@ from utils import get_username
 
 def handle_start_token(chat_id, token, user):
     """
-    Main /start token resolver
-
-    Supports:
+    Handles:
     - single movie tokens
     - grouped tokens
     """
@@ -100,13 +97,12 @@ def handle_start_token(chat_id, token, user):
             )
             return True
 
-        increment_group_access(token)
-
         queued = queue_group_delivery(
             chat_id=chat_id,
             files=files,
             username=get_username(user),
-            group_name=group.get("title")
+            group_name=group.get("title"),
+            group_token=token
         )
 
         if not queued:
