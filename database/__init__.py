@@ -1,9 +1,9 @@
 # file: database/__init__.py
 
 from .connection import (
-    MONGO_AVAILABLE
+    MONGO_AVAILABLE,
+    db
 )
-
 from .movies import (
     load_movies,
     load_movies_full,
