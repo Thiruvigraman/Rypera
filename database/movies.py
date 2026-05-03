@@ -109,7 +109,14 @@ def save_movie(name, file_id):
         return None
 
     try:
-        token = generate_unique_token()
+        existing = movies_collection.find_one({
+    "name": name
+})
+
+         if existing:
+          token = existing.get("token")
+else:
+          token = generate_unique_token()
 
         # ================= METADATA =================
 
