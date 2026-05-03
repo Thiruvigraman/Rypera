@@ -10,4 +10,4 @@ from .sent_files import *
 
 from .access_logs import *
 
-from .status import *
+from .stats import *
