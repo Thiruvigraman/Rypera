@@ -11,7 +11,7 @@ from redis_client import (
     REDIS_AVAILABLE
 )
 
-from services.metadata.parser import parse_metadata
+from metadata.parser import parse_filename
 
 from .connection import (
     MONGO_AVAILABLE,
