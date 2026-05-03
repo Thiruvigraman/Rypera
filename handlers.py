@@ -18,6 +18,9 @@ from commands.list_movies import (
     handle_list_movies,
     send_page
 )
+from commands.migrate_metadata import (
+    handle_migrate_metadata
+)
 from commands.list_groups import (
     handle_list_groups
 )
