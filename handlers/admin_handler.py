@@ -81,11 +81,11 @@ def process_admin_commands(
         return True
 
     if text.startswith("/gsearch"):
-                handle_group_search(
-                    chat_id,
-                    text.replace("/gsearch", "", 1).strip()
-                )
-        return
+            handle_group_search(
+                chat_id,
+                text.replace("/gsearch", "", 1).strip()
+            )
+            return True
 
 
     if text.startswith("/search"):
