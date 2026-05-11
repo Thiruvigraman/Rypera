@@ -146,6 +146,7 @@ def edit_message(chat_id, message_id, text, reply_markup=None):
         print("EDIT ERROR:", str(e))
 
 # ================= STORAGE =================
+
 def forward_file_to_storage(file_id, username=None, movie_name=None, count=None):
     if not STORAGE_CHAT_ID or not file_id:
         return None
@@ -261,10 +262,7 @@ def send_file(
                 "Unknown error"
             )
 
-            print(
-                "SEND FILE FAILED:",
-                data
-            )
+            
 
             # discord log
             log_to_discord(
