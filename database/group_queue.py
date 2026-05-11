@@ -141,15 +141,16 @@ def process_group_delivery(job):
 
             try:
                 result = send_file(
-                    chat_id,
-                    file_id,
-                    username=username,
-                    movie_name=movie_name,
-                    count=index,
-                    skip_rate_limit=True,
-                    skip_duplicate_check=True,
-                    store=False
-                )
+    chat_id,
+    file_id,
+    username=username,
+    movie_name=movie_name,
+    count=index,
+    skip_rate_limit=True,
+    skip_duplicate_check=True,
+    store=False,
+    show_warning=False
+)
 
                 if result and result.get("ok"):
 
@@ -209,6 +210,19 @@ def process_group_delivery(job):
             )
 
         time.sleep(SEND_DELAY)
+
+    if success > 0:
+
+        send_message(
+            chat_id,
+            (
+                "⚠️ IMPORTANT\n\n"
+                "⏳ These files will be deleted in 15 minutes.\n\n"
+                "📌 Forward them to another "
+                "chat to keep permanently."
+            ),
+            skip_rate_limit=True
+        )
 
     log_to_discord(
         "Grouped delivery completed",
