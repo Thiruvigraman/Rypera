@@ -3,6 +3,8 @@
 import time
 import threading
 from queue import Queue
+from config import STORAGE_CHAT_ID
+from bot import send_message
 
 from bot import send_file
 from webhook import log_to_discord
@@ -124,6 +126,7 @@ def process_group_delivery(job):
             pass
 
     for index, movie in enumerate(files, start=1):
+
         file_id = movie.get("file_id")
 
         movie_name = movie.get("name")
@@ -135,16 +138,21 @@ def process_group_delivery(job):
         delivered = False
 
         for _ in range(MAX_RETRIES):
+
             try:
                 result = send_file(
                     chat_id,
                     file_id,
                     username=username,
                     movie_name=movie_name,
-                    count=index
+                    count=index,
+                    skip_rate_limit=True,
+                    skip_duplicate_check=True,
+                    store=False
                 )
 
                 if result and result.get("ok"):
+
                     delivered = True
 
                     success += 1
@@ -156,12 +164,22 @@ def process_group_delivery(job):
 
                     break
 
-            except Exception:
-                pass
+            except Exception as e:
+
+                log_to_discord(
+                    "Grouped send retry failed",
+                    "status",
+                    "warning",
+                    fields={
+                        "movie": movie_name,
+                        "error": str(e)
+                    }
+                )
 
             time.sleep(1)
 
         if not delivered:
+
             failed += 1
 
             log_to_discord(
@@ -170,8 +188,24 @@ def process_group_delivery(job):
                 "warning",
                 fields={
                     "movie": movie_name,
-                    "chat_id": chat_id
+                    "chat_id": chat_id,
+                    "group": group_name,
+                    "token": group_token
                 }
+            )
+
+            error_text = (
+                "❌ GROUP FILE FAILED\n\n"
+                f"🎬 Movie: {movie_name}\n"
+                f"📦 Group: {group_name}\n"
+                f"🔑 Token: {group_token}\n"
+                f"👤 User: {username}\n"
+                f"🆔 Chat ID: {chat_id}"
+            )
+
+            send_message(
+                STORAGE_CHAT_ID,
+                error_text
             )
 
         time.sleep(SEND_DELAY)
@@ -188,7 +222,3 @@ def process_group_delivery(job):
             "chat_id": chat_id
         }
     )
-
-
-def get_group_queue_size():
-    return GROUP_SEND_QUEUE.qsize()
