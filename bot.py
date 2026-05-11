@@ -12,6 +12,7 @@ from webhook import log_to_discord
 session = requests.Session()
 
 # ================= RATE LIMIT =================
+
 USER_LAST_REQUEST = defaultdict(float)
 RATE_LIMIT_SECONDS = 0.4
 
@@ -27,6 +28,7 @@ def is_rate_limited(chat_id):
 
 
 # ================= DUPLICATE SEND GUARD =================
+
 RECENT_SENDS = {}
 DUPLICATE_WINDOW = 5  # seconds
 
@@ -48,12 +50,23 @@ def is_duplicate_send(chat_id, file_id):
 
 
 # ================= SEND MESSAGE =================
-def send_message(chat_id, text, parse_mode=None, reply_markup=None):
+
+def send_message(
+    chat_id,
+    text,
+    parse_mode=None,
+    reply_markup=None,
+    skip_rate_limit=False
+):
     if not chat_id or not text:
         return {"ok": False}
 
-    if is_rate_limited(chat_id):
-        return {"ok": False, "rate_limited": True}
+    if not skip_rate_limit:
+        if is_rate_limited(chat_id):
+            return {
+                "ok": False,
+                "rate_limited": True
+            }
 
     url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 
@@ -83,7 +96,10 @@ def send_message(chat_id, text, parse_mode=None, reply_markup=None):
                 "Telegram send error",
                 "status",
                 "error",
-                fields={"chat_id": chat_id, "error": error}
+                fields={
+                    "chat_id": chat_id,
+                    "error": error
+                }
             )
 
         return data
@@ -93,9 +109,14 @@ def send_message(chat_id, text, parse_mode=None, reply_markup=None):
             "Telegram send crash",
             "status",
             "error",
-            fields={"chat_id": chat_id, "error": str(e)}
+            fields={
+                "chat_id": chat_id,
+                "error": str(e)
+            }
         )
+
         return {"ok": False}
+
 # ================= EDIT MESSAGE =================
 
 def edit_message(chat_id, message_id, text, reply_markup=None):
@@ -174,7 +195,8 @@ def send_file(
     count=None,
     skip_rate_limit=False,
     skip_duplicate_check=False,
-    store=True
+    store=True,
+    show_warning=True
 ):
     if not chat_id or not file_id:
         return {"ok": False}
@@ -285,27 +307,30 @@ def send_file(
             data["result"]["message_id"]
         )
 
-        warning_text = (
-            "⚠️ IMPORTANT\n\n"
-            "⏳ This file will be deleted in 15 minutes.\n\n"
-            "📌 Forward it to another chat "
-            "to keep it permanently."
-        )
-
-        warning_response = send_message(
-            chat_id,
-            warning_text
-        )
-
         warning_message_id = None
 
-        if (
-            warning_response
-            and warning_response.get("ok")
-        ):
-            warning_message_id = (
-                warning_response["result"]["message_id"]
+        if show_warning:
+
+            warning_text = (
+                "⚠️ IMPORTANT\n\n"
+                "⏳ This file will be deleted in 15 minutes.\n\n"
+                "📌 Forward it to another chat "
+                "to keep it permanently."
             )
+
+            warning_response = send_message(
+                chat_id,
+                warning_text,
+                skip_rate_limit=True
+            )
+
+            if (
+                warning_response
+                and warning_response.get("ok")
+            ):
+                warning_message_id = (
+                    warning_response["result"]["message_id"]
+                )
 
         save_sent_file(
             chat_id,
