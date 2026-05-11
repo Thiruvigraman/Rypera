@@ -166,23 +166,55 @@ def forward_file_to_storage(file_id, username=None, movie_name=None, count=None)
 
 # ================= SEND FILE =================
 
-def send_file(chat_id, file_id, username=None, movie_name=None, count=None):
+def send_file(
+    chat_id,
+    file_id,
+    username=None,
+    movie_name=None,
+    count=None,
+    skip_rate_limit=False,
+    skip_duplicate_check=False,
+    store=True
+):
     if not chat_id or not file_id:
         return {"ok": False}
 
-    if is_duplicate_send(chat_id, file_id):
-        return {"ok": False}
+    # ================= DUPLICATE CHECK =================
 
-    if is_rate_limited(chat_id):
-        return {"ok": False}
+    if not skip_duplicate_check:
+        if is_duplicate_send(chat_id, file_id):
+            return {
+                "ok": False,
+                "duplicate": True
+            }
 
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendDocument'
+    # ================= RATE LIMIT =================
 
-    threading.Thread(
-        target=forward_file_to_storage,
-        args=(file_id, username, movie_name, count),
-        daemon=True
-    ).start()
+    if not skip_rate_limit:
+        if is_rate_limited(chat_id):
+            return {
+                "ok": False,
+                "rate_limited": True
+            }
+
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendDocument"
+    )
+
+    # ================= STORAGE COPY =================
+
+    if store:
+        threading.Thread(
+            target=forward_file_to_storage,
+            args=(
+                file_id,
+                username,
+                movie_name,
+                count
+            ),
+            daemon=True
+        ).start()
 
     payload = {
         "chat_id": chat_id,
@@ -190,42 +222,140 @@ def send_file(chat_id, file_id, username=None, movie_name=None, count=None):
     }
 
     try:
-        res = session.post(url, json=payload, timeout=10)
+        res = session.post(
+            url,
+            json=payload,
+            timeout=20
+        )
+
         data = res.json()
 
+        # ================= TELEGRAM FAILED =================
+
         if not data.get("ok"):
-            log_to_discord("Send file failed", "status", "error",
-                           fields={"chat_id": chat_id})
+
+            error_description = data.get(
+                "description",
+                "Unknown error"
+            )
+
+            print(
+                "SEND FILE FAILED:",
+                data
+            )
+
+            # discord log
+            log_to_discord(
+                "Send file failed",
+                "status",
+                "error",
+                fields={
+                    "chat_id": chat_id,
+                    "movie": movie_name,
+                    "user": username,
+                    "file_id": file_id,
+                    "error": error_description
+                }
+            )
+
+            # storage alert
+            try:
+                from config import STORAGE_CHAT_ID
+
+                send_message(
+                    STORAGE_CHAT_ID,
+                    (
+                        "❌ FILE DELIVERY FAILED\n\n"
+                        f"🎬 Movie: {movie_name}\n"
+                        f"👤 User: {username}\n"
+                        f"🆔 Chat ID: {chat_id}\n"
+                        f"📄 File ID: {file_id}\n"
+                        f"⚠️ Error: {error_description}"
+                    )
+                )
+
+            except Exception:
+                pass
+
             return data
 
-        file_message_id = data["result"]["message_id"]
+        # ================= SUCCESS =================
+
+        file_message_id = (
+            data["result"]["message_id"]
+        )
 
         warning_text = (
             "⚠️ IMPORTANT\n\n"
             "⏳ This file will be deleted in 15 minutes.\n\n"
-            "📌 Forward it to another chat to keep it permanently."
+            "📌 Forward it to another chat "
+            "to keep it permanently."
+        )
+
+        warning_response = send_message(
+            chat_id,
+            warning_text
         )
 
         warning_message_id = None
 
-        for _ in range(3):
-            warning_response = send_message(chat_id, warning_text)
+        if (
+            warning_response
+            and warning_response.get("ok")
+        ):
+            warning_message_id = (
+                warning_response["result"]["message_id"]
+            )
 
-            if warning_response and warning_response.get("ok"):
-                warning_message_id = warning_response["result"]["message_id"]
-                break
-
-            time.sleep(0.5)
-
-        save_sent_file(chat_id, file_message_id, warning_message_id, time.time())
+        save_sent_file(
+            chat_id,
+            file_message_id,
+            warning_message_id,
+            time.time()
+        )
 
         return data
 
-    except Exception:
-        log_to_discord("Send file crash", "status", "error")
-        return {"ok": False}
-        
+    # ================= HARD CRASH =================
 
+    except Exception as e:
+
+        print(
+            "SEND FILE CRASH:",
+            str(e)
+        )
+
+        log_to_discord(
+            "Send file crash",
+            "status",
+            "error",
+            fields={
+                "chat_id": chat_id,
+                "movie": movie_name,
+                "user": username,
+                "file_id": file_id,
+                "error": str(e)
+            }
+        )
+
+        try:
+            from config import STORAGE_CHAT_ID
+
+            send_message(
+                STORAGE_CHAT_ID,
+                (
+                    "💥 FILE SEND CRASH\n\n"
+                    f"🎬 Movie: {movie_name}\n"
+                    f"👤 User: {username}\n"
+                    f"📄 File ID: {file_id}\n"
+                    f"⚠️ Error: {str(e)}"
+                )
+            )
+
+        except Exception:
+            pass
+
+        return {"ok": False}
 
 
 # ================= DELETE =================
