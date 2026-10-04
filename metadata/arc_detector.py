@@ -51,7 +51,7 @@ ARC_RANGES = {
         {"name": "Reverie", "start": 878, "end": 889},
         {"name": "Wano", "start": 890, "end": 1085},
         {"name": "Egghead", "start": 1086, "end": 1154},
-        {"name": "Elbaph", "start": 1155, "end": 1154},
+        {"name": "Elbaph", "start": 1155, "end": 9999},
     ]
 }
 
