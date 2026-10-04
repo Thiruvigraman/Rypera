@@ -18,6 +18,8 @@ from database import setup_log_ttl
 from database.group_queue import start_group_worker
 from concurrent.futures import ThreadPoolExecutor
 
+from audit.resource_audit import AUDIT_ENABLED, run_resource_audit
+
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 app = Flask(__name__)
@@ -199,6 +201,9 @@ def init_system():
     cleanup_pending_files()
 
     start_group_worker()
+
+    if AUDIT_ENABLED:
+        run_resource_audit()
 
     setup_log_ttl()
     
