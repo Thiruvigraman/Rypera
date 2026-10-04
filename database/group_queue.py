@@ -24,9 +24,8 @@ MAX_RETRIES = 3
 MAX_GROUP_FILES = 300
 
 
-# Phase 1 diagnostic logging.
-# Set GROUP_DEBUG = False after diagnosis to silence [GROUP] queue logs.
-GROUP_DEBUG = True
+
+GROUP_DEBUG = False
 
 
 def _group_debug(message):
